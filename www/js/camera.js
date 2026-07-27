@@ -14,8 +14,8 @@ const CameraController = (() => {
       audio: false,
       video: {
         facingMode: { ideal: facingMode },
-        width: { ideal: 1920 },
-        height: { ideal: 1920 },
+        width: { ideal: 2560 },
+        height: { ideal: 1440 },
       },
     };
     stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -35,7 +35,28 @@ const CameraController = (() => {
     if (videoEl) await start(videoEl);
   }
 
-  function captureFrame(canvas) {
+  // Prefers ImageCapture.takePhoto(), which asks the camera sensor for a
+  // full-resolution still — the same path native camera apps use — instead
+  // of just grabbing whatever frame the (much lower-res) live preview
+  // stream happens to be showing. Falls back to a video-frame grab on
+  // browsers without ImageCapture support (e.g. iOS Safari).
+  async function captureFrame(canvas) {
+    const track = stream && stream.getVideoTracks()[0];
+    if (track && "ImageCapture" in window) {
+      try {
+        const capture = new ImageCapture(track);
+        const blob = await capture.takePhoto();
+        const bitmap = await createImageBitmap(blob);
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        canvas.getContext("2d").drawImage(bitmap, 0, 0);
+        if (bitmap.close) bitmap.close();
+        return canvas;
+      } catch (err) {
+        // Some devices advertise ImageCapture but reject takePhoto() for
+        // the active track — fall through to the video-frame grab below.
+      }
+    }
     const video = videoEl;
     const w = video.videoWidth, h = video.videoHeight;
     canvas.width = w;

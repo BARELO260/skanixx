@@ -16,7 +16,8 @@
  *     corners are in the source canvas's pixel space.
  */
 const EdgeDetector = (() => {
-  const ANALYSIS_WIDTH = 260;
+  const ANALYSIS_WIDTH = 240;
+  const MAX_COMPONENTS_CONSIDERED = 10; // biggest few blobs that could plausibly be the document
   let analysisCanvas = null;
   let analysisCtx = null;
 
@@ -68,28 +69,51 @@ const EdgeDetector = (() => {
     const blurred = boxBlur3(gray, w, h);
     const mag = sobelMagnitude(blurred, w, h);
 
-    let best = tryThreshold(mag, w, h, 1.15);
-    if (!best) best = tryThreshold(mag, w, h, 0.75);
-    if (!best) best = tryThreshold(mag, w, h, 0.5);
-    return best;
-  }
-
-  function tryThreshold(mag, w, h, kFactor) {
+    // Compute gradient statistics once — reused by every threshold attempt
+    // below instead of re-scanning the whole array each time.
     let sum = 0;
     for (let i = 0; i < mag.length; i++) sum += mag[i];
     const mean = sum / mag.length;
     let variance = 0;
     for (let i = 0; i < mag.length; i++) variance += (mag[i] - mean) * (mag[i] - mean);
     const std = Math.sqrt(variance / mag.length);
+
+    let best = tryThreshold(mag, w, h, mean, std, 1.15);
+    if (!best) best = tryThreshold(mag, w, h, mean, std, 0.75);
+    if (!best) best = tryThreshold(mag, w, h, mean, std, 0.5);
+    return best;
+  }
+
+  function tryThreshold(mag, w, h, mean, std, kFactor) {
     const thresh = Math.max(mean + std * kFactor, 12);
 
     const mask = new Uint8Array(w * h);
     for (let i = 0; i < mag.length; i++) mask[i] = mag[i] > thresh ? 1 : 0;
-    dilate(mask, w, h, 1);
+    dilate(mask, w, h, 2);
 
     const minSize = Math.max(25, Math.floor(w * h * 0.004));
-    const components = connectedComponents(mask, w, h, minSize);
+    let components = connectedComponents(mask, w, h, minSize);
     if (!components.length) return null;
+
+    // Only the biggest few blobs can plausibly be the document outline.
+    // Rank by bounding-box area, not raw edge-pixel count: a textured
+    // background (wood grain, carpet, tiles) can scatter far more total
+    // edge pixels than a document's thin 4-line outline while covering
+    // less actual area — ranking by point count was discarding the real
+    // document candidate before its hull/area was ever computed.
+    if (components.length > MAX_COMPONENTS_CONSIDERED) {
+      for (const c of components) {
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const p of c.points) {
+          if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+          if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
+        }
+        c.bboxArea = (maxX - minX) * (maxY - minY);
+      }
+      components = components
+        .sort((a, b) => b.bboxArea - a.bboxArea)
+        .slice(0, MAX_COMPONENTS_CONSIDERED);
+    }
 
     const frameArea = w * h;
     let best = null;
@@ -102,8 +126,10 @@ const EdgeDetector = (() => {
       const areaFrac = area / frameArea;
       if (areaFrac < 0.12 || areaFrac > 0.98) continue;
       if (!isRoughlyConvexQuad(quad)) continue;
-      const score = areaFrac;
-      if (!best || score > best.score) best = { corners: orderCorners(quad), score };
+      const ordered = orderCorners(quad);
+      const rectangularity = quadRectangularity(ordered);
+      const score = areaFrac * rectangularity;
+      if (!best || score > best.score) best = { corners: ordered, score };
     }
     return best;
   }
@@ -280,6 +306,19 @@ const EdgeDetector = (() => {
       if (ang < 25 || ang > 155) return false;
     }
     return true;
+  }
+
+  // 1.0 for a perfect rectangle, decreasing as corner angles stray from 90°.
+  // Used to prefer genuinely document-shaped quads over larger-but-skewed
+  // shapes a cluttered background can produce.
+  function quadRectangularity(q) {
+    let penalty = 0;
+    for (let i = 0; i < 4; i++) {
+      const a = q[(i - 1 + 4) % 4], b = q[i], c = q[(i + 1) % 4];
+      const ang = angleAt(a, b, c);
+      penalty += Math.abs(ang - 90) / 90;
+    }
+    return Math.max(0, 1 - penalty / 4);
   }
 
   function orderCorners(q) {

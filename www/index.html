@@ -51,30 +51,23 @@
 
     <!-- ===== HOME / CAPTURE VIEW ===== -->
     <section id="view-home" class="view view-active">
-      <div class="hero">
-        <p class="eyebrow">Escáner de documentos</p>
-        <h1>Convierte cualquier papel en un <span class="grad-text">PDF nítido</span> en segundos.</h1>
-        <p class="sub">Apunta la cámara, ajusta las esquinas y exporta. Todo ocurre en tu dispositivo — funciona incluso sin conexión.</p>
-      </div>
-
       <div class="capture-actions">
         <button id="openCameraBtn" class="action-card action-primary">
           <span class="action-icon">
-            <svg viewBox="0 0 24 24" width="26" height="26"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.6l.9-1.5A1.5 1.5 0 0 1 10.29 3.7h3.42a1.5 1.5 0 0 1 1.29.8l.9 1.5h1.6A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-9Z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="13" r="3.4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+            <svg viewBox="0 0 24 24" width="28" height="28"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.6l.9-1.5A1.5 1.5 0 0 1 10.29 3.7h3.42a1.5 1.5 0 0 1 1.29.8l.9 1.5h1.6A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-9Z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="13" r="3.4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
           </span>
           <span class="action-text">
-            <strong>Escanear con cámara</strong>
-            <small>Detección y recorte automáticos</small>
+            <strong>Escanear documento</strong>
+            <small>Apunta la cámara — el recorte es automático</small>
           </span>
         </button>
 
-        <button id="openUploadBtn" class="action-card">
+        <button id="openUploadBtn" class="action-card action-secondary">
           <span class="action-icon">
-            <svg viewBox="0 0 24 24" width="24" height="24"><path d="M12 15.5V4M12 4 7.5 8.5M12 4l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 15v3A2.5 2.5 0 0 0 7 20.5h10a2.5 2.5 0 0 0 2.5-2.5v-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 15.5V4M12 4 7.5 8.5M12 4l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 15v3A2.5 2.5 0 0 0 7 20.5h10a2.5 2.5 0 0 0 2.5-2.5v-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
           </span>
           <span class="action-text">
             <strong>Subir imagen</strong>
-            <small>Desde tu galería o archivos</small>
           </span>
         </button>
         <input type="file" id="fileInput" accept="image/*" multiple hidden />
@@ -98,6 +91,8 @@
       <div id="historyGrid" class="history-grid">
         <p class="empty-hint">Aún no has escaneado ningún documento. Tus escaneos aparecerán aquí, guardados en este dispositivo.</p>
       </div>
+
+      <p class="home-footnote">Skanix convierte cualquier papel en un PDF nítido en segundos — todo ocurre en tu dispositivo, incluso sin conexión.</p>
     </section>
 
     <!-- ===== CAMERA VIEW ===== -->
@@ -116,6 +111,9 @@
         <div id="detectBadge" class="detect-badge">
           <span class="detect-dot"></span><span id="detectBadgeText">Buscando…</span>
         </div>
+        <button id="autoCaptureToggle" class="auto-toggle" aria-pressed="true" title="Captura automática">
+          <svg viewBox="0 0 24 24" width="14" height="14"><path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Auto</button>
         <div id="cameraHint" class="camera-hint">Encuadra el documento dentro del marco</div>
         <div id="flashOverlay" class="flash-overlay"></div>
       </div>
@@ -132,10 +130,11 @@
     </section>
 
     <!-- ===== CROP / PERSPECTIVE VIEW ===== -->
-    <section id="view-crop" class="view">
+    <section id="view-crop" class="view crop-view">
       <div class="crop-stage">
         <canvas id="cropCanvas"></canvas>
       </div>
+      <canvas id="cropLoupe" class="crop-loupe hidden"></canvas>
       <div class="crop-controls">
         <button id="cropAutoBtn" class="btn-chip btn-ghost">
           <svg viewBox="0 0 24 24" width="15" height="15"><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M20 9V5.5A1.5 1.5 0 0 0 18.5 4H15M4 15v3.5A1.5 1.5 0 0 0 5.5 20H9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
@@ -382,6 +381,17 @@
       </div>
     </div>
 
+    <div id="textAnnotateModal" class="dialog-backdrop hidden">
+      <div class="dialog">
+        <p id="textAnnotateTitle">Añadir texto</p>
+        <textarea id="textAnnotateInput" class="text-annotate-input" maxlength="200" rows="3" placeholder="Escribe el texto…"></textarea>
+        <div class="dialog-actions">
+          <button id="textAnnotateCancelBtn" class="btn-secondary">Cancelar</button>
+          <button id="textAnnotateConfirmBtn" class="btn-primary">Listo</button>
+        </div>
+      </div>
+    </div>
+
   </main>
 
   <!-- ---------- Bottom nav ---------- -->
@@ -417,7 +427,7 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="js/vendor/jspdf.umd.min.js"></script>
 <script src="js/db.js"></script>
 <script src="js/edgeDetector.js"></script>
 <script src="js/imageProcessing.js"></script>

@@ -238,6 +238,43 @@ const ImageProcessing = (() => {
     }
   }
 
+  /* ----------------------------------------------------------------
+   * 4) OCR PREPROCESSING — distinct from the cosmetic filters above.
+   * Converts to grayscale, then stretches contrast using the 1st/99th
+   * intensity percentiles (robust to shadows/glare outliers) so faint
+   * or low-contrast text becomes crisp before it reaches Tesseract.
+   * ---------------------------------------------------------------- */
+  function prepareForOcr(imageData) {
+    const d = imageData.data;
+    const n = d.length / 4;
+    const gray = new Uint8ClampedArray(n);
+    const hist = new Uint32Array(256);
+    for (let i = 0, p = 0; i < d.length; i += 4, p++) {
+      const l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      gray[p] = l;
+      hist[l | 0]++;
+    }
+    // Find 1st/99th percentile levels to use as black/white points.
+    const lo = n * 0.01, hi = n * 0.99;
+    let cum = 0, black = 0, white = 255;
+    for (let v = 0; v < 256; v++) {
+      cum += hist[v];
+      if (cum >= lo) { black = v; break; }
+    }
+    cum = 0;
+    for (let v = 255; v >= 0; v--) {
+      cum += hist[v];
+      if (cum >= n - hi) { white = v; break; }
+    }
+    if (white - black < 20) { black = Math.max(0, black - 10); white = Math.min(255, white + 10); }
+    const range = Math.max(1, white - black);
+    for (let p = 0, i = 0; p < n; p++, i += 4) {
+      const v = clamp(((gray[p] - black) / range) * 255);
+      d[i] = d[i + 1] = d[i + 2] = v;
+    }
+    return imageData;
+  }
+
   function sharpen(imageData) {
     const { width: w, height: h, data: src } = imageData;
     const out = new Uint8ClampedArray(src.length);
@@ -270,5 +307,6 @@ const ImageProcessing = (() => {
     detectDocumentCorners,
     applyAdjustments,
     applyFilter,
+    prepareForOcr,
   };
 })();

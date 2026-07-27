@@ -41,6 +41,37 @@
     });
   }
 
+  // Replaces native prompt() with the app's own styled modal — resolves to
+  // the trimmed text, or null if cancelled/left empty.
+  function textInputDialog(title, defaultValue = "") {
+    return new Promise((resolve) => {
+      const backdrop = $("#textAnnotateModal");
+      const input = $("#textAnnotateInput");
+      $("#textAnnotateTitle").textContent = title;
+      input.value = defaultValue;
+      backdrop.classList.remove("hidden");
+      requestAnimationFrame(() => { input.focus(); input.select(); });
+      const cleanup = (result) => {
+        backdrop.classList.add("hidden");
+        confirmBtn.removeEventListener("click", onConfirm);
+        cancelBtn.removeEventListener("click", onCancel);
+        input.removeEventListener("keydown", onKeydown);
+        resolve(result);
+      };
+      const confirmBtn = $("#textAnnotateConfirmBtn");
+      const cancelBtn = $("#textAnnotateCancelBtn");
+      const onConfirm = () => cleanup(input.value.trim() || null);
+      const onCancel = () => cleanup(null);
+      const onKeydown = (e) => {
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onConfirm(); }
+        if (e.key === "Escape") onCancel();
+      };
+      confirmBtn.addEventListener("click", onConfirm);
+      cancelBtn.addEventListener("click", onCancel);
+      input.addEventListener("keydown", onKeydown);
+    });
+  }
+
   function uid() {
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
@@ -79,7 +110,7 @@
       $$(".nav-btn[data-nav]").forEach((b) =>
         b.classList.toggle("nav-active", b.dataset.nav === viewId)
       );
-      window.scrollTo({ top: 0, behavior: "instant" in window ? "instant" : "auto" });
+      window.scrollTo(0, 0);
       if (viewId !== "view-camera") { CameraController.stop(); EdgeLoop.stop(); }
     },
   };
@@ -93,19 +124,23 @@
     const SMOOTH_ALPHA = 0.35;
     const MAX_MISS = 6;
     const STABLE_NEEDED = 4;
-    const DETECT_INTERVAL = 180; // ms between analysis passes
+    const AUTO_HOLD_EXTRA = 5; // extra stable ticks after "locked" before auto-firing (~650ms hold)
+    const DETECT_INTERVAL = 130; // ms between analysis passes
 
     let raf = null, timer = null, running = false;
     let smoothed = null;   // {corners, score} in video-native pixel space
     let missStreak = 0, stableStreak = 0;
+    let firedForThisLock = false;
+    let onAutoCapture = null;
     let overlayCanvas = null, overlayCtx = null, videoEl = null;
 
-    function start(video) {
+    function start(video, autoCaptureCallback) {
       stop();
       videoEl = video;
+      onAutoCapture = autoCaptureCallback || null;
       overlayCanvas = $("#edgeOverlay");
       overlayCtx = overlayCanvas.getContext("2d");
-      smoothed = null; missStreak = 0; stableStreak = 0;
+      smoothed = null; missStreak = 0; stableStreak = 0; firedForThisLock = false;
       running = true;
       setState("searching");
       tick();
@@ -140,10 +175,17 @@
               })),
               score: result.score,
             };
-            setState(stableStreak >= STABLE_NEEDED ? "locked" : "searching");
+            const locked = stableStreak >= STABLE_NEEDED;
+            setState(locked ? "locked" : "searching");
+            if (locked && !firedForThisLock && State.autoCaptureEnabled &&
+                stableStreak >= STABLE_NEEDED + AUTO_HOLD_EXTRA) {
+              firedForThisLock = true;
+              if (onAutoCapture) onAutoCapture();
+            }
           } else {
             missStreak++;
             stableStreak = 0;
+            firedForThisLock = false;
             if (missStreak > MAX_MISS) { smoothed = null; setState("searching"); }
           }
         }
@@ -235,6 +277,7 @@
     editingExistingIndex: null, // index into currentPages when re-editing
     pendingDetectedCorners: null, // live-detected quad from the last shutter press
     editingDocId: null,   // id of the saved document being edited, or null for a new one
+    autoCaptureEnabled: localStorage.getItem("skanix-autocapture") !== "off",
   };
 
   function newPage(baseCanvas) {
@@ -315,6 +358,37 @@
     drawStrokes(octx, W, H, page.strokes);
     drawWatermark(octx, W, H, page.watermark);
     drawAnnotations(octx, W, H, page.annotations);
+    return out;
+  }
+
+  function renderPageForOcr(page, maxDim = 2400) {
+    let src = page.base;
+    if (page.rotation % 360 !== 0) {
+      const rad = (page.rotation * Math.PI) / 180;
+      const swap = page.rotation % 180 !== 0;
+      const w = swap ? src.height : src.width;
+      const h = swap ? src.width : src.height;
+      const rc = document.createElement("canvas");
+      rc.width = w; rc.height = h;
+      const rctx = rc.getContext("2d");
+      rctx.translate(w / 2, h / 2);
+      rctx.rotate(rad);
+      rctx.drawImage(src, -src.width / 2, -src.height / 2);
+      src = rc;
+    }
+    let scale = 1;
+    if (Math.max(src.width, src.height) > maxDim) {
+      scale = maxDim / Math.max(src.width, src.height);
+    }
+    const out = document.createElement("canvas");
+    out.width = Math.round(src.width * scale);
+    out.height = Math.round(src.height * scale);
+    const octx = out.getContext("2d");
+    octx.drawImage(src, 0, 0, out.width, out.height);
+
+    const imgData = octx.getImageData(0, 0, out.width, out.height);
+    ImageProcessing.prepareForOcr(imgData);
+    octx.putImageData(imgData, 0, 0);
     return out;
   }
 
@@ -472,7 +546,7 @@
     Router.show("view-camera");
     try {
       await CameraController.start($("#cameraVideo"));
-      EdgeLoop.start($("#cameraVideo"));
+      EdgeLoop.start($("#cameraVideo"), capturePhoto);
     } catch (err) {
       toast("No se pudo acceder a la cámara. Revisa los permisos.", "error");
       Router.show("view-home");
@@ -486,24 +560,48 @@
   });
   $("#cameraSwitchBtn").addEventListener("click", async () => {
     await CameraController.switchCamera();
-    EdgeLoop.start($("#cameraVideo")); // fresh stream -> restart detection cleanly
+    EdgeLoop.start($("#cameraVideo"), capturePhoto); // fresh stream -> restart detection cleanly
   });
-  $("#shutterBtn").addEventListener("click", async () => {
+  async function capturePhoto() {
     if (!CameraController.isActive()) return;
     SoundFX.shutter();
     const flash = $("#flashOverlay");
     flash.classList.remove("flashing"); void flash.offsetWidth; flash.classList.add("flashing");
 
+    const video = $("#cameraVideo");
+    const liveW = video.videoWidth, liveH = video.videoHeight;
+    const liveQuad = EdgeLoop.currentQuad(); // corners in live-preview pixel space
+
     const canvas = $("#captureCanvas");
-    CameraController.captureFrame(canvas);
-    // capture the live-detected quad (native video pixel space, matches
-    // captureFrame's canvas exactly) before it's cleared by EdgeLoop.stop()
-    State.pendingDetectedCorners = EdgeLoop.currentQuad();
-    const img = await loadImage(canvas.toDataURL("image/jpeg", 0.95));
+    await CameraController.captureFrame(canvas);
+    // The still photo can come back at a different resolution than the
+    // live preview (ImageCapture asks the sensor for its full-res photo,
+    // independent of the preview stream) — rescale the detected quad into
+    // the captured photo's pixel space so the crop overlay lines up.
+    if (liveQuad && liveW && liveH) {
+      const sx = canvas.width / liveW, sy = canvas.height / liveH;
+      State.pendingDetectedCorners = liveQuad.map((p) => ({ x: p.x * sx, y: p.y * sy }));
+    } else {
+      State.pendingDetectedCorners = null;
+    }
+    const img = await loadImage(canvas.toDataURL("image/jpeg", 0.96));
     State.uploadQueue.push(img);
     // keep camera open for rapid multi-page capture; queue processes in background
     processNextInQueue();
+  }
+  $("#shutterBtn").addEventListener("click", capturePhoto);
+
+  $("#autoCaptureToggle").addEventListener("click", () => {
+    State.autoCaptureEnabled = !State.autoCaptureEnabled;
+    localStorage.setItem("skanix-autocapture", State.autoCaptureEnabled ? "on" : "off");
+    syncAutoCaptureToggle();
   });
+  function syncAutoCaptureToggle() {
+    const btn = $("#autoCaptureToggle");
+    btn.classList.toggle("is-off", !State.autoCaptureEnabled);
+    btn.setAttribute("aria-pressed", String(State.autoCaptureEnabled));
+  }
+  syncAutoCaptureToggle();
 
   /* ---------------------------------------------------------------
    * QUEUE -> CROP VIEW
@@ -604,6 +702,56 @@
     return { x: xCss / Crop.scale, y: yCss / Crop.scale };
   }
 
+  const LOUPE_SIZE = 116, LOUPE_ZOOM = 2.8;
+  function clientPointFromEvent(e) {
+    const t = e.touches ? (e.touches[0] || e.changedTouches[0]) : e;
+    return { clientX: t.clientX, clientY: t.clientY };
+  }
+  function updateLoupe(clientPoint, imgPoint) {
+    const loupe = $("#cropLoupe");
+    const section = document.getElementById("view-crop");
+    const sectionRect = section.getBoundingClientRect();
+    const dpr = Math.max(1, window.devicePixelRatio || 1);
+    if (Number(loupe.dataset.dpr) !== dpr) {
+      loupe.width = LOUPE_SIZE * dpr;
+      loupe.height = LOUPE_SIZE * dpr;
+      loupe.style.width = LOUPE_SIZE + "px";
+      loupe.style.height = LOUPE_SIZE + "px";
+      loupe.dataset.dpr = dpr;
+    }
+    // Float above the touch point so the finger never covers the corner
+    // it's actually about to place.
+    let left = clientPoint.clientX - sectionRect.left - LOUPE_SIZE / 2;
+    let top = clientPoint.clientY - sectionRect.top - LOUPE_SIZE - 48;
+    left = Math.max(4, Math.min(sectionRect.width - LOUPE_SIZE - 4, left));
+    top = Math.max(4, top);
+    loupe.style.left = left + "px";
+    loupe.style.top = top + "px";
+    loupe.classList.remove("hidden");
+
+    const lctx = loupe.getContext("2d");
+    lctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    lctx.clearRect(0, 0, LOUPE_SIZE, LOUPE_SIZE);
+    lctx.save();
+    lctx.beginPath();
+    lctx.arc(LOUPE_SIZE / 2, LOUPE_SIZE / 2, LOUPE_SIZE / 2 - 1, 0, Math.PI * 2);
+    lctx.clip();
+    const srcSize = LOUPE_SIZE / LOUPE_ZOOM;
+    lctx.drawImage(
+      Crop.sourceCanvas,
+      imgPoint.x - srcSize / 2, imgPoint.y - srcSize / 2, srcSize, srcSize,
+      0, 0, LOUPE_SIZE, LOUPE_SIZE
+    );
+    lctx.strokeStyle = "rgba(168,85,247,.95)";
+    lctx.lineWidth = 1.5;
+    lctx.beginPath();
+    lctx.moveTo(LOUPE_SIZE / 2 - 9, LOUPE_SIZE / 2); lctx.lineTo(LOUPE_SIZE / 2 + 9, LOUPE_SIZE / 2);
+    lctx.moveTo(LOUPE_SIZE / 2, LOUPE_SIZE / 2 - 9); lctx.lineTo(LOUPE_SIZE / 2, LOUPE_SIZE / 2 + 9);
+    lctx.stroke();
+    lctx.restore();
+  }
+  function hideLoupe() { $("#cropLoupe").classList.add("hidden"); }
+
   function setupCropInteraction() {
     const canvas = $("#cropCanvas");
     const HIT_R = 26;
@@ -619,6 +767,7 @@
       if (bestD <= HIT_R) {
         Crop.dragIndex = best;
         e.preventDefault();
+        updateLoupe(clientPointFromEvent(e), Crop.corners[best]);
       }
     }
     function move(e) {
@@ -630,8 +779,9 @@
       p.y = Math.max(0, Math.min(sc.height, p.y));
       Crop.corners[Crop.dragIndex] = p;
       drawCrop();
+      updateLoupe(clientPointFromEvent(e), p);
     }
-    function up() { Crop.dragIndex = -1; }
+    function up() { Crop.dragIndex = -1; hideLoupe(); }
 
     canvas.addEventListener("mousedown", down);
     canvas.addEventListener("mousemove", move);
@@ -934,8 +1084,8 @@
       });
     });
 
-    function addText() {
-      const text = prompt("Texto a añadir:", "Texto");
+    async function addText() {
+      const text = await textInputDialog("Añadir texto", "");
       if (!text) return;
       const a = { id: uid(), type: "text", xFrac: 0.28, yFrac: 0.42, size: 0.045, color: "#111827", text: text.slice(0, 200) };
       page.annotations.push(a);
@@ -945,10 +1095,10 @@
       scheduleAutosave();
     }
 
-    $("#annEditTextBtn").addEventListener("click", () => {
+    $("#annEditTextBtn").addEventListener("click", async () => {
       const a = currentSelected();
       if (!a || a.type !== "text") return;
-      const text = prompt("Editar texto:", a.text);
+      const text = await textInputDialog("Editar texto", a.text);
       if (text === null) return;
       a.text = text.slice(0, 200);
       renderEditCanvas().then(drawSelection);
@@ -1136,8 +1286,8 @@
     $("#ocrProgressFill").style.width = "0%";
     $("#ocrProgressLabel").textContent = "Preparando reconocimiento…";
     try {
-      const canvas = renderPage(State.activePage, 2000);
-      const { text } = await OCR.recognize(canvas, "spa+eng", (progress) => {
+      const canvas = renderPageForOcr(State.activePage, 2400);
+      const { text } = await OCR.recognize(canvas, "spa", (progress) => {
         const pct = Math.round(progress * 100);
         $("#ocrProgressFill").style.width = pct + "%";
         $("#ocrProgressLabel").textContent = `Reconociendo texto… ${pct}%`;
@@ -1301,11 +1451,20 @@
     $("#outQuality").textContent = `${e.target.value}%`;
   });
 
-  async function buildExportBlobs() {
+  async function buildExportBlobs(onProgress) {
     const format = document.querySelector('input[name="format"]:checked').value;
     const quality = Number($("#rangeQuality").value) / 100;
     const name = ($("#fileNameInput").value || "Documento").trim() || "Documento";
-    const pages = State.currentPages.map((p) => renderPage(p, 2200));
+    // Render pages one at a time with a yield in between instead of one
+    // blocking .map() over the whole document — keeps the UI (progress
+    // label, spinner) responsive instead of freezing for the entire
+    // multi-page render before any feedback can paint.
+    const pages = [];
+    for (let i = 0; i < State.currentPages.length; i++) {
+      pages.push(renderPage(State.currentPages[i], 2200));
+      if (onProgress) onProgress(i + 1, State.currentPages.length);
+      await new Promise((r) => requestAnimationFrame(r));
+    }
 
     if (format === "pdf") {
       const { jsPDF } = window.jspdf;
@@ -1356,11 +1515,26 @@
    * so it can be reopened and fully edited again later. Also drives
    * silent autosave whenever an already-saved document changes.
    * --------------------------------------------------------------- */
+  // page.base only ever changes identity on crop/retake (a fresh canvas is
+  // created); every other edit (filter, adjustments, annotations, rotation,
+  // watermark) leaves it untouched. Caching its JPEG encode by canvas
+  // identity means autosave — which fires after *every* edit — stops
+  // paying to re-encode every page's full original photo each time.
+  const baseDataUrlCache = new WeakMap();
+  function getBaseDataUrl(canvas) {
+    let url = baseDataUrlCache.get(canvas);
+    if (!url) {
+      url = canvas.toDataURL("image/jpeg", 0.92);
+      baseDataUrlCache.set(canvas, url);
+    }
+    return url;
+  }
+
   async function persistCurrentDocument() {
     const name = ($("#fileNameInput").value || "Documento").trim() || "Documento";
     const pagesData = State.currentPages.map((p) => ({
       id: p.id,
-      base: p.base.toDataURL("image/jpeg", 0.92),
+      base: getBaseDataUrl(p.base),
       rotation: p.rotation,
       filter: p.filter,
       brightness: p.brightness,
@@ -1412,7 +1586,9 @@
     const btn = $("#saveExportBtn");
     btn.disabled = true; const original = btn.textContent; btn.textContent = "Exportando…";
     try {
-      const files = await buildExportBlobs();
+      const files = await buildExportBlobs((done, total) => {
+        btn.textContent = total > 1 ? `Exportando ${done}/${total}…` : "Exportando…";
+      });
       files.forEach((f) => downloadBlob(f.blob, f.filename));
       await persistCurrentDocument();
 
@@ -1501,7 +1677,7 @@
 
   $("#reviewRenameBtn").addEventListener("click", async () => {
     const current = $("#fileNameInput").value || "Documento";
-    const name = prompt("Nuevo nombre del documento:", current);
+    const name = await textInputDialog("Renombrar documento", current);
     if (!name) return;
     $("#fileNameInput").value = name.trim().slice(0, 60) || current;
     $("#reviewTitle").textContent = $("#fileNameInput").value;
@@ -1556,11 +1732,56 @@
   window.addEventListener("appinstalled", () => $("#installBtn").classList.add("hidden"));
 
   /* ---------------------------------------------------------------
-   * Service worker registration (offline support)
+   * Service worker registration (offline support) — web/PWA only.
+   * Wrapped natively (Capacitor), the app already ships as bundled
+   * local files with no network dependency, so a service worker adds
+   * nothing and iOS's WKWebView doesn't reliably support one anyway.
    * --------------------------------------------------------------- */
-  if ("serviceWorker" in navigator) {
+  const isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  if ("serviceWorker" in navigator && !isNative) {
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("sw.js").catch((err) => console.warn("SW registration failed", err));
+    });
+  }
+
+  /* ---------------------------------------------------------------
+   * Native shell integration (Capacitor)
+   * --------------------------------------------------------------- */
+  if (isNative) {
+    // No install prompt inside a native app.
+    $("#installBtn")?.classList.add("hidden");
+
+    const Plugins = window.Capacitor.Plugins || {};
+    Plugins.StatusBar?.setBackgroundColor?.({ color: "#0B0E1A" }).catch(() => {});
+    Plugins.StatusBar?.setStyle?.({ style: "DARK" }).catch(() => {});
+
+    // Android hardware back button: close any open dialog first, then
+    // fall back to each view's own Cancel/Back button (so behaviour
+    // matches tapping it by hand), then minimize instead of hard-exiting
+    // from the home screen — abrupt app-kill on back-press is jarring
+    // and not how well-behaved Android apps handle the root screen.
+    Plugins.App?.addListener?.("backButton", () => {
+      const openDialog = $$(".dialog-backdrop").find((d) => !d.classList.contains("hidden"));
+      if (openDialog) {
+        const cancelBtn = openDialog.querySelector("#signatureCancelBtn, #textAnnotateCancelBtn, #confirmCancel");
+        (cancelBtn || openDialog.querySelector(".btn-secondary"))?.click();
+        return;
+      }
+      const activeView = $(".view.view-active")?.id;
+      const backButtonByView = {
+        "view-camera": "#cameraBackBtn",
+        "view-crop": "#cropBackBtn",
+        "view-edit": "#editBackBtn",
+        "view-review": null, // no dedicated back button — falls through to Router.show below
+      };
+      if (activeView && activeView in backButtonByView) {
+        const sel = backButtonByView[activeView];
+        if (sel) { $(sel)?.click(); return; }
+        Router.show("view-home");
+        return;
+      }
+      // Already at the root view — minimize rather than kill the app.
+      Plugins.App?.minimizeApp?.();
     });
   }
 

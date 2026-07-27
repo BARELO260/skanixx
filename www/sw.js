@@ -6,7 +6,7 @@
  * also means heavier on-demand libraries (OCR, DOCX zipping) get
  * cached automatically the first time they're actually used.
  */
-const CACHE_NAME = "skanix-shell-v3";
+const CACHE_NAME = "skanix-shell-v4";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
@@ -20,12 +20,12 @@ const SHELL_ASSETS = [
   "./js/ocr.js",
   "./js/exporters.js",
   "./js/sound.js",
+  "./js/vendor/jspdf.umd.min.js",
   "./icons/icon-192.png",
   "./icons/icon-512.png",
   "./icons/icon-maskable-512.png",
   "./icons/apple-touch-icon.png",
   "./icons/favicon-32.png",
-  "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js",
 ];
 // Best-effort precache for heavier on-demand libraries (OCR engine, DOCX
 // zipper). These are large, so we never block install/offline-readiness on
@@ -33,8 +33,11 @@ const SHELL_ASSETS = [
 // fails (e.g. first install happens offline), the generic fetch handler
 // still caches them the first time the user actually triggers OCR/DOCX.
 const OPTIONAL_ASSETS = [
-  "https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js",
-  "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js",
+  "./js/vendor/jszip.min.js",
+  "./js/vendor/tesseract.min.js",
+  "./js/vendor/worker.min.js",
+  "./js/vendor/tesseract-core/tesseract-core-simd-lstm.wasm.js",
+  "./js/vendor/tesseract-core/tesseract-core-simd-lstm.wasm",
 ];
 
 self.addEventListener("install", (event) => {

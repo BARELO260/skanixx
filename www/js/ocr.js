@@ -6,14 +6,16 @@
  * reuse automatically (see sw.js).
  */
 const OCR = (() => {
-  const TESSERACT_URL = "https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.0.4/tesseract.min.js";
+  const TESSERACT_URL = "js/vendor/tesseract.min.js";
+  const WORKER_PATH = "js/vendor/worker.min.js";
+  const CORE_PATH = "js/vendor/tesseract-core/tesseract-core-simd-lstm.wasm.js";
   let tesseractLoading = null;
   let worker = null;
   let workerLang = null;
 
   function loadScriptOnce(url) {
     return new Promise((resolve, reject) => {
-      if ([...document.scripts].some((s) => s.src === url)) return resolve();
+      if ([...document.scripts].some((s) => s.src.endsWith(url))) return resolve();
       const s = document.createElement("script");
       s.src = url;
       s.onload = () => resolve();
@@ -34,6 +36,8 @@ const OCR = (() => {
     if (worker && workerLang === lang) return worker;
     if (worker) { try { await worker.terminate(); } catch (e) {} worker = null; }
     worker = await window.Tesseract.createWorker(lang, 1, {
+      workerPath: WORKER_PATH,
+      corePath: CORE_PATH,
       logger: (m) => {
         if (onProgress && m.status === "recognizing text") onProgress(m.progress);
       },
@@ -44,9 +48,13 @@ const OCR = (() => {
 
   /**
    * recognize(canvas, lang, onProgress) -> { text, confidence }
-   * lang: "spa" | "eng" | "spa+eng" (default "spa+eng" for mixed docs)
+   * lang: "spa" | "eng" | "spa+eng". Defaults to "spa" — combining two
+   * languages makes Tesseract pick between competing dictionaries per
+   * word, which is the main cause of odd/garbled substitutions on
+   * documents that are really just one language. Pass "spa+eng"
+   * explicitly for genuinely bilingual documents.
    */
-  async function recognize(canvas, lang = "spa+eng", onProgress) {
+  async function recognize(canvas, lang = "spa", onProgress) {
     const w = await getWorker(lang, onProgress);
     const { data } = await w.recognize(canvas);
     return { text: (data.text || "").trim(), confidence: data.confidence || 0 };

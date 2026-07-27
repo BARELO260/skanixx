@@ -4,12 +4,12 @@
  * on demand purely to zip the parts together.
  */
 const Exporters = (() => {
-  const JSZIP_URL = "https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js";
+  const JSZIP_URL = "js/vendor/jszip.min.js";
   let jszipLoading = null;
 
   function loadScriptOnce(url) {
     return new Promise((resolve, reject) => {
-      if ([...document.scripts].some((s) => s.src === url)) return resolve();
+      if ([...document.scripts].some((s) => s.src.endsWith(url))) return resolve();
       const s = document.createElement("script");
       s.src = url;
       s.onload = () => resolve();
