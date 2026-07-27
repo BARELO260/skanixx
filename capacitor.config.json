@@ -1,0 +1,23 @@
+{
+  "appId": "com.skanix.app",
+  "appName": "Skanix",
+  "webDir": "www",
+  "backgroundColor": "#0B0E1A",
+  "server": {
+    "androidScheme": "https"
+  },
+  "android": {
+    "backgroundColor": "#0B0E1A"
+  },
+  "ios": {
+    "backgroundColor": "#0B0E1A",
+    "contentInset": "always"
+  },
+  "plugins": {
+    "StatusBar": {
+      "overlaysWebView": false,
+      "style": "DARK",
+      "backgroundColor": "#0B0E1A"
+    }
+  }
+}
