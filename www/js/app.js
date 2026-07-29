@@ -872,6 +872,52 @@
     renderEditCanvas();
   }
 
+  const FILTER_THUMB_SIZE = 84;
+  function renderFilterThumbnails(page) {
+    let src = page.base;
+    if (page.rotation % 360 !== 0) {
+      const rad = (page.rotation * Math.PI) / 180;
+      const swap = page.rotation % 180 !== 0;
+      const w = swap ? src.height : src.width;
+      const h = swap ? src.width : src.height;
+      const rc = document.createElement("canvas");
+      rc.width = w; rc.height = h;
+      const rctx = rc.getContext("2d");
+      rctx.translate(w / 2, h / 2);
+      rctx.rotate(rad);
+      rctx.drawImage(src, -src.width / 2, -src.height / 2);
+      src = rc;
+    }
+    // Center-crop a square so the preview shows real document content
+    // (text/texture), not letterboxed empty margins.
+    const side = Math.min(src.width, src.height);
+    const sx = (src.width - side) / 2, sy = (src.height - side) / 2;
+    const S = FILTER_THUMB_SIZE;
+    const base = document.createElement("canvas");
+    base.width = S; base.height = S;
+    const bctx = base.getContext("2d");
+    bctx.drawImage(src, sx, sy, side, side, 0, 0, S, S);
+    const baseData = bctx.getImageData(0, 0, S, S);
+
+    $$(".filter-chip").forEach((chip) => {
+      const filter = chip.dataset.filter;
+      const tmp = document.createElement("canvas");
+      tmp.width = S; tmp.height = S;
+      const tctx = tmp.getContext("2d");
+      const imgData = tctx.createImageData(S, S);
+      imgData.data.set(baseData.data);
+      ImageProcessing.applyFilter(imgData, filter);
+      ImageProcessing.applyAdjustments(imgData, {
+        brightness: page.brightness, contrast: page.contrast, saturation: page.saturation,
+      });
+      tctx.putImageData(imgData, 0, 0);
+      const swatch = chip.querySelector(".fchip-swatch");
+      if (swatch) {
+        swatch.style.backgroundImage = `url(${tmp.toDataURL("image/jpeg", 0.85)})`;
+      }
+    });
+  }
+
   async function renderEditCanvas() {
     const token = ++editRenderToken;
     $("#editLoader").classList.remove("hidden");
@@ -884,6 +930,7 @@
     canvas.getContext("2d").drawImage(out, 0, 0);
     $("#editLoader").classList.add("hidden");
     Annotate.syncOverlaySize();
+    renderFilterThumbnails(p);
   }
 
   function debounce(fn, ms) {
