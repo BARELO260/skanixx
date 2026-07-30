@@ -558,14 +558,42 @@
    * --------------------------------------------------------------- */
   async function startCameraFlow() {
     Router.show("view-camera");
+    $("#cameraErrorState")?.classList.add("hidden");
+    $("#cameraVideo")?.classList.remove("hidden");
     try {
       await CameraController.start($("#cameraVideo"));
       EdgeLoop.start($("#cameraVideo"), capturePhoto);
     } catch (err) {
-      toast("No se pudo acceder a la cámara. Revisa los permisos.", "error");
+      showCameraError(err);
+    }
+  }
+
+  function showCameraError(err) {
+    const name = err && err.name;
+    let message = "No se pudo acceder a la cámara.";
+    if (name === "NotAllowedError" || name === "PermissionDeniedError") {
+      message = "Permiso de cámara denegado. Actívalo en los ajustes de tu navegador o del sistema para poder escanear.";
+    } else if (name === "NotFoundError" || name === "OverconstrainedError") {
+      message = "No se encontró ninguna cámara disponible en este dispositivo.";
+    } else if (name === "NotReadableError") {
+      message = "La cámara está siendo usada por otra aplicación. Ciérrala e inténtalo de nuevo.";
+    }
+    $("#cameraVideo")?.classList.add("hidden");
+    const state = $("#cameraErrorState");
+    if (state) {
+      $("#cameraErrorText").textContent = message;
+      state.classList.remove("hidden");
+    } else {
+      toast(message, "error");
       Router.show("view-home");
     }
   }
+  $("#cameraRetryBtn")?.addEventListener("click", () => startCameraFlow());
+  $("#cameraErrorBackBtn")?.addEventListener("click", () => {
+    CameraController.stop();
+    EdgeLoop.stop();
+    Router.show("view-home");
+  });
 
   $("#cameraBackBtn").addEventListener("click", () => {
     CameraController.stop();
@@ -1689,9 +1717,13 @@
     toast(`${n} página${n === 1 ? "" : "s"} eliminada${n === 1 ? "" : "s"}`, "success");
   });
 
-  $("#addMorePagesBtn").addEventListener("click", () => {
+  $("#addMorePagesCameraBtn").addEventListener("click", () => {
     State.editingExistingIndex = null;
     startCameraFlow();
+  });
+  $("#addMorePagesUploadBtn").addEventListener("click", () => {
+    State.editingExistingIndex = null;
+    $("#fileInput").click();
   });
 
   $("#rangeQuality").addEventListener("input", (e) => {
