@@ -116,6 +116,14 @@
           Auto</button>
         <div id="cameraHint" class="camera-hint">Encuadra el documento dentro del marco</div>
         <div id="flashOverlay" class="flash-overlay"></div>
+        <div id="cameraErrorState" class="camera-error-state hidden">
+          <svg viewBox="0 0 24 24" width="34" height="34"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.6l.9-1.5A1.5 1.5 0 0 1 10.29 3.7h3.42a1.5 1.5 0 0 1 1.29.8l.9 1.5h1.6A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-9Z" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" stroke-width="1.5"/></svg>
+          <p id="cameraErrorText">No se pudo acceder a la cámara.</p>
+          <div class="camera-error-actions">
+            <button id="cameraErrorBackBtn" class="btn-chip btn-ghost">Volver</button>
+            <button id="cameraRetryBtn" class="btn-chip">Reintentar</button>
+          </div>
+        </div>
       </div>
       <div class="camera-controls">
         <button id="cameraBackBtn" class="round-btn" aria-label="Cancelar">
@@ -352,10 +360,16 @@
         <span id="reviewSavedHint" class="autosave-hint hidden">Guardado ✓</span>
       </div>
       <div id="reviewGrid" class="review-grid"></div>
-      <button id="addMorePagesBtn" class="add-page-tile">
-        <svg viewBox="0 0 24 24" width="22" height="22"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        Añadir otra página
-      </button>
+      <div class="add-page-row">
+        <button id="addMorePagesCameraBtn" class="add-page-tile">
+          <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.6l.9-1.5A1.5 1.5 0 0 1 10.29 3.7h3.42a1.5 1.5 0 0 1 1.29.8l.9 1.5h1.6A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-9Z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="13" r="3.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
+          Cámara
+        </button>
+        <button id="addMorePagesUploadBtn" class="add-page-tile">
+          <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 15.5V4M12 4 7.5 8.5M12 4l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 15v3A2.5 2.5 0 0 0 7 20.5h10a2.5 2.5 0 0 0 2.5-2.5v-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          Galería
+        </button>
+      </div>
 
       <div class="export-panel">
         <label class="field">
