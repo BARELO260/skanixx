@@ -201,6 +201,14 @@ p{ margin:0; }
 /* ---------- Section head / history ---------- */
 .section-head{ display:flex; align-items:center; justify-content:space-between; margin: 22px 0 10px; }
 .section-head h2{ font-size:15.5px; font-weight:600; }
+.review-head-actions{ display:flex; align-items:center; gap:8px; }
+.review-select-bar{
+  display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:8px;
+  margin:0 0 14px; padding:10px 14px; border-radius: var(--radius-md);
+  background: var(--surface-2); border:1px solid var(--border); font-size:13px; color: var(--text-muted);
+}
+.review-select-actions{ display:flex; gap:8px; }
+.btn-chip:disabled{ opacity:.45; cursor:default; }
 .link-btn{ background:none; border:none; color: var(--text-muted); font-size:12.5px; cursor:pointer; padding:4px; }
 .link-btn:hover{ color: var(--red); }
 .pill{
@@ -458,6 +466,10 @@ p{ margin:0; }
 .fs-original{ background: linear-gradient(160deg,#93c5fd,#1d4ed8); }
 
 .slider-row{ display:grid; grid-template-columns: 84px 1fr 40px; align-items:center; gap:10px; margin:14px 0; font-size:13px; }
+.auto-enhance-btn{
+  display:flex; align-items:center; justify-content:center; gap:8px; width:100%;
+  padding:12px; margin-bottom:16px; background: var(--grad-scan); color:#fff;
+}
 .slider-row output{ font-family: var(--font-mono); font-size:12px; color: var(--text-muted); text-align:right; }
 input[type="range"]{
   -webkit-appearance:none; appearance:none; height:4px; border-radius:2px;
@@ -524,6 +536,23 @@ input[type="range"]::-moz-range-thumb{
   font-size:14px; line-height:1; cursor:pointer; backdrop-filter: blur(4px);
 }
 .rc-move:disabled{ opacity:.25; cursor:default; }
+
+/* ---------- Review select mode ---------- */
+.review-card.select-mode{ cursor:pointer; }
+.review-card.select-mode .rc-handle,
+.review-card.select-mode .rc-remove,
+.review-card.select-mode .rc-reorder{ display:none; }
+.review-card.selected{ border-color: var(--purple); box-shadow: 0 0 0 2px var(--purple); }
+.review-card.selected img{ opacity:.75; }
+.rc-check{
+  position:absolute; top:6px; right:6px; width:22px; height:22px; border-radius:50%;
+  border:2px solid rgba(255,255,255,.85); background: rgba(11,14,26,.35);
+  display:none; align-items:center; justify-content:center; backdrop-filter: blur(4px);
+}
+.review-card.select-mode .rc-check{ display:flex; }
+.review-card.selected .rc-check{ background: var(--purple); border-color: var(--purple); }
+.review-card.selected .rc-check svg{ opacity:1; }
+.rc-check svg{ opacity:0; }
 
 .review-edit-actions{ display:flex; align-items:center; gap:8px; margin-bottom:10px; flex-wrap:wrap; }
 .autosave-hint{
