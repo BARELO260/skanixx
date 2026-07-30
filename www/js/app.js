@@ -576,21 +576,58 @@
     await CameraController.switchCamera();
     EdgeLoop.start($("#cameraVideo"), capturePhoto); // fresh stream -> restart detection cleanly
   });
+  // Center-crops `canvas` to `targetAspect` (width/height), trimming only —
+  // never scales, so full sensor resolution/quality is preserved.
+  function cropCanvasToAspect(canvas, targetAspect) {
+    const w = canvas.width, h = canvas.height;
+    const currentAspect = w / h;
+    let cropW = w, cropH = h;
+    if (currentAspect > targetAspect) {
+      // Photo is proportionally wider than what was shown live — trim sides.
+      cropW = Math.round(h * targetAspect);
+    } else if (currentAspect < targetAspect) {
+      // Photo is proportionally taller than what was shown live — trim top/bottom.
+      cropH = Math.round(w / targetAspect);
+    } else {
+      return canvas; // already matches, nothing to trim
+    }
+    const sx = Math.round((w - cropW) / 2), sy = Math.round((h - cropH) / 2);
+    const out = document.createElement("canvas");
+    out.width = cropW; out.height = cropH;
+    out.getContext("2d").drawImage(canvas, sx, sy, cropW, cropH, 0, 0, cropW, cropH);
+    return out;
+  }
+
   async function capturePhoto() {
     if (!CameraController.isActive()) return;
     SoundFX.shutter();
     const flash = $("#flashOverlay");
     flash.classList.remove("flashing"); void flash.offsetWidth; flash.classList.add("flashing");
 
+    // What the user actually saw live: the camera-stage box, with the video
+    // shown via object-fit:cover inside it. Read this now, before capture,
+    // so we know exactly what framing to reproduce in the still photo.
+    const stage = document.querySelector(".camera-stage");
+    const stageAspect = stage ? stage.clientWidth / stage.clientHeight : null;
+
     const liveQuad = EdgeLoop.currentQuad(); // fallback only, live-preview pixel space
 
-    const canvas = $("#captureCanvas");
+    let canvas = $("#captureCanvas");
     await CameraController.captureFrame(canvas);
-    // Detect directly on the captured photo's own pixels rather than
-    // rescaling the live-preview quad. ImageCapture.takePhoto() commonly
-    // returns a different resolution *and* field of view than the video
-    // preview stream (the sensor's native still-photo framing, not just a
-    // higher-res crop of the same view) — a uniform x/y rescale of the
+    // The still photo (especially via ImageCapture, which asks the sensor
+    // for its own native photo mode) very often comes back in a different
+    // aspect ratio / field of view than the cropped preview the user was
+    // actually framing against — that mismatch is what made captured
+    // photos look "zoomed out" compared to what was on screen. Trim the
+    // photo to the same aspect the preview displayed, centered, at full
+    // resolution, so the framing matches exactly.
+    if (stageAspect) {
+      canvas = cropCanvasToAspect(canvas, stageAspect);
+    }
+    // Detect directly on the captured (now correctly-framed) photo's own
+    // pixels rather than rescaling the live-preview quad. ImageCapture.
+    // takePhoto() commonly returns a different resolution *and* field of
+    // view than the video preview stream — a uniform x/y rescale of the
     // preview quad silently distorts in that case, which is exactly why
     // the crop corners could end up somewhere other than the real edges.
     // Detecting on the actual captured image is correct by construction.
@@ -812,6 +849,44 @@
   }
   setupCropInteraction();
 
+  // dir: 1 = clockwise, -1 = counter-clockwise. Rotates the actual source
+  // image (not a CSS transform) and remaps the corner points to match,
+  // including cycling their array order so index 0 keeps meaning
+  // "top-left" — warpPerspective() below reads corners by position, so a
+  // rotation that only transforms coordinates without re-cycling the
+  // array would crop correctly but come out rotated 90° in the final page.
+  function rotateCropSource(dir) {
+    const src = Crop.sourceCanvas;
+    const oldW = src.width, oldH = src.height;
+    const rotated = document.createElement("canvas");
+    rotated.width = oldH; rotated.height = oldW;
+    const rctx = rotated.getContext("2d");
+    rctx.translate(rotated.width / 2, rotated.height / 2);
+    rctx.rotate((dir * Math.PI) / 2);
+    rctx.drawImage(src, -oldW / 2, -oldH / 2);
+
+    if (Crop.corners) {
+      const mapPoint = dir === 1
+        ? (p) => ({ x: oldH - p.y, y: p.x })
+        : (p) => ({ x: p.y, y: oldW - p.x });
+      const order = [0, 1, 2, 3].map((i) => (dir === 1 ? (i - 1 + 4) % 4 : (i + 1) % 4));
+      Crop.corners = order.map((i) => mapPoint(Crop.corners[i]));
+    }
+
+    Crop.sourceCanvas = rotated;
+    const stage = document.querySelector(".crop-stage");
+    const cssW = stage.clientWidth;
+    const scale = cssW / rotated.width;
+    Crop.scale = scale;
+    Crop.canvas.style.width = cssW + "px";
+    Crop.canvas.style.height = Math.round(rotated.height * scale) + "px";
+    Crop.canvas.width = Math.round(cssW * Crop.dpr);
+    Crop.canvas.height = Math.round(rotated.height * scale * Crop.dpr);
+    drawCrop();
+  }
+  $("#cropRotateLeftBtn").addEventListener("click", () => rotateCropSource(-1));
+  $("#cropRotateRightBtn").addEventListener("click", () => rotateCropSource(1));
+
   $("#cropAutoBtn").addEventListener("click", () => {
     Crop.corners = ImageProcessing.detectDocumentCorners(Crop.sourceCanvas);
     drawCrop();
@@ -956,6 +1031,60 @@
     btn.classList.add("active");
     State.activePage.filter = btn.dataset.filter;
     debouncedRender();
+  });
+
+  function clampRange(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
+
+  // Solves for the (brightness, contrast) slider pair that reproduces a
+  // target linear levels-stretch output=(input-black)*k through the app's
+  // existing contrast formula: cFactor*(input+brightness-128)+128.
+  // Matching slopes gives cFactor=k; matching the constant term gives
+  // brightness; contrast is then cFactor's inverse under the app's own
+  // (259*(c+255))/(255*(259-c)) curve.
+  function autoEnhanceValues(black, white) {
+    const k = clampRange(255 / Math.max(1, white - black), 0.5, 2.2);
+    const brightness = clampRange(Math.round(128 * (1 - 1 / k) - black), -100, 100);
+    const contrastRaw = (255 * 259 * (k - 1)) / (259 + 255 * k);
+    const contrast = clampRange(Math.round(contrastRaw), -100, 100);
+    return { brightness, contrast };
+  }
+
+  function computeAutoEnhance(page) {
+    const SIZE = 150;
+    const src = page.base;
+    const scale = SIZE / Math.max(src.width, src.height);
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(src.width * scale));
+    c.height = Math.max(1, Math.round(src.height * scale));
+    const ctx = c.getContext("2d");
+    ctx.drawImage(src, 0, 0, c.width, c.height);
+    const data = ctx.getImageData(0, 0, c.width, c.height).data;
+    const hist = new Uint32Array(256);
+    const n = c.width * c.height;
+    for (let i = 0; i < data.length; i += 4) {
+      const l = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+      hist[l | 0]++;
+    }
+    const lo = n * 0.01, hi = n * 0.99;
+    let cum = 0, black = 0, white = 255;
+    for (let v = 0; v < 256; v++) { cum += hist[v]; if (cum >= lo) { black = v; break; } }
+    cum = 0;
+    for (let v = 255; v >= 0; v--) { cum += hist[v]; if (cum >= n - hi) { white = v; break; } }
+    if (white - black < 40) { black = Math.max(0, black - 20); white = Math.min(255, white + 20); }
+    const { brightness, contrast } = autoEnhanceValues(black, white);
+    return { brightness, contrast, saturation: 8 };
+  }
+
+  $("#autoEnhanceBtn").addEventListener("click", () => {
+    const p = State.activePage;
+    const { brightness, contrast, saturation } = computeAutoEnhance(p);
+    p.brightness = brightness; p.contrast = contrast; p.saturation = saturation;
+    $("#rangeBrightness").value = brightness; $("#outBrightness").textContent = brightness;
+    $("#rangeContrast").value = contrast; $("#outContrast").textContent = contrast;
+    $("#rangeSaturation").value = saturation; $("#outSaturation").textContent = saturation;
+    renderEditCanvas();
+    scheduleAutosave();
+    toast("Mejora automática aplicada ✓", "success");
   });
 
   function bindSlider(rangeId, outId, prop) {
@@ -1429,19 +1558,25 @@
     renderReviewGrid();
   }
 
+  let reviewSelectMode = false;
+  let reviewSelectedIds = new Set();
+
   function renderReviewGrid() {
     const grid = $("#reviewGrid");
     grid.innerHTML = "";
     $("#reviewCount").textContent = `${State.currentPages.length} página${State.currentPages.length === 1 ? "" : "s"}`;
     State.currentPages.forEach((page, i) => {
       const card = document.createElement("div");
-      card.className = "review-card";
-      card.draggable = true;
+      card.className = "review-card" + (reviewSelectMode ? " select-mode" : "") + (reviewSelectedIds.has(page.id) ? " selected" : "");
+      card.draggable = !reviewSelectMode;
       card.dataset.index = i;
       card.dataset.pageId = page.id;
       card.innerHTML = `
         <span class="rc-num">${i + 1}</span>
         <img src="${pageThumb(page, 360)}" alt="Página ${i + 1}" />
+        <span class="rc-check" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="13" height="13"><path d="M5 13l4 4L19 7" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </span>
         <span class="rc-handle" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="13" height="13"><circle cx="8" cy="6" r="1.4" fill="currentColor"/><circle cx="16" cy="6" r="1.4" fill="currentColor"/><circle cx="8" cy="12" r="1.4" fill="currentColor"/><circle cx="16" cy="12" r="1.4" fill="currentColor"/><circle cx="8" cy="18" r="1.4" fill="currentColor"/><circle cx="16" cy="18" r="1.4" fill="currentColor"/></svg>
         </span>
@@ -1475,6 +1610,12 @@
       });
       card.addEventListener("click", (e) => {
         if (e.target.closest(".rc-remove") || e.target.closest(".rc-move")) return;
+        if (reviewSelectMode) {
+          if (reviewSelectedIds.has(page.id)) reviewSelectedIds.delete(page.id);
+          else reviewSelectedIds.add(page.id);
+          renderReviewGrid();
+          return;
+        }
         const idx = State.currentPages.findIndex((p) => p.id === page.id);
         State.editingExistingIndex = idx;
         State.activePage = State.currentPages[idx];
@@ -1507,7 +1648,46 @@
       });
       grid.appendChild(card);
     });
+    updateReviewSelectBar();
   }
+
+  function updateReviewSelectBar() {
+    const validIds = new Set(State.currentPages.map((p) => p.id));
+    for (const id of [...reviewSelectedIds]) if (!validIds.has(id)) reviewSelectedIds.delete(id);
+    $("#reviewSelectBar").classList.toggle("hidden", !reviewSelectMode);
+    $("#reviewSelectModeBtn").textContent = reviewSelectMode ? "Listo" : "Seleccionar";
+    $("#reviewSelectCount").textContent = `${reviewSelectedIds.size} seleccionada${reviewSelectedIds.size === 1 ? "" : "s"}`;
+    $("#reviewSelectDeleteBtn").disabled = reviewSelectedIds.size === 0;
+  }
+
+  $("#reviewSelectModeBtn").addEventListener("click", () => {
+    reviewSelectMode = !reviewSelectMode;
+    if (!reviewSelectMode) reviewSelectedIds.clear();
+    renderReviewGrid();
+  });
+  $("#reviewSelectCancelBtn").addEventListener("click", () => {
+    reviewSelectMode = false;
+    reviewSelectedIds.clear();
+    renderReviewGrid();
+  });
+  $("#reviewSelectAllBtn").addEventListener("click", () => {
+    const allSelected = reviewSelectedIds.size === State.currentPages.length;
+    reviewSelectedIds = allSelected ? new Set() : new Set(State.currentPages.map((p) => p.id));
+    renderReviewGrid();
+  });
+  $("#reviewSelectDeleteBtn").addEventListener("click", async () => {
+    if (reviewSelectedIds.size === 0) return;
+    const n = reviewSelectedIds.size;
+    const ok = await confirmDialog(`¿Eliminar ${n} página${n === 1 ? "" : "s"} seleccionada${n === 1 ? "" : "s"}?`);
+    if (!ok) return;
+    State.currentPages = State.currentPages.filter((p) => !reviewSelectedIds.has(p.id));
+    reviewSelectedIds.clear();
+    reviewSelectMode = false;
+    renderReviewGrid();
+    updatePendingBar();
+    scheduleAutosave();
+    toast(`${n} página${n === 1 ? "" : "s"} eliminada${n === 1 ? "" : "s"}`, "success");
+  });
 
   $("#addMorePagesBtn").addEventListener("click", () => {
     State.editingExistingIndex = null;
