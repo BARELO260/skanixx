@@ -2021,6 +2021,21 @@
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("sw.js").catch((err) => console.warn("SW registration failed", err));
     });
+    // Once a new service worker activates and takes control, the page
+    // that's currently open is still running the OLD cached code in
+    // memory — reload once so the user actually sees the update instead
+    // of silently staying on stale JS until their next manual refresh.
+    // Only do this for a genuine update (there was already a controller
+    // before) — controllerchange also fires on the very first install,
+    // where there's nothing to "update" from and reloading would just be
+    // an unwanted flash on first visit.
+    const hadControllerAtLoad = !!navigator.serviceWorker.controller;
+    let reloadedForUpdate = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (reloadedForUpdate || !hadControllerAtLoad) return;
+      reloadedForUpdate = true;
+      window.location.reload();
+    });
   }
 
   /* ---------------------------------------------------------------
