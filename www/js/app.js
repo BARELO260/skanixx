@@ -465,8 +465,27 @@
     }
   }
 
+  // Cheap fingerprint of everything that affects a page's rendered pixels —
+  // used to skip re-rendering a thumbnail when nothing actually changed.
+  function pageThumbSignature(page) {
+    return [
+      page.rotation, page.filter, page.brightness, page.contrast, page.saturation,
+      page.watermark ? `${page.watermark.text}|${page.watermark.opacity}|${page.watermark.angle}` : "",
+      page.annotations.map((a) => `${a.id}:${a.xFrac.toFixed(3)}:${a.yFrac.toFixed(3)}:${a.text || ""}:${a.color || ""}:${a.size || ""}`).join(","),
+      page.strokes.map((s) => `${s.id}:${s.points.length}`).join(","),
+    ].join("|");
+  }
+
   function pageThumb(page, maxDim = 500) {
-    return renderPage(page, maxDim).toDataURL("image/jpeg", 0.82);
+    const sig = pageThumbSignature(page);
+    if (!page._thumbCache) page._thumbCache = {};
+    const cache = page._thumbCache[maxDim];
+    if (cache && cache.base === page.base && cache.sig === sig) {
+      return cache.url;
+    }
+    const url = renderPage(page, maxDim).toDataURL("image/jpeg", 0.82);
+    page._thumbCache[maxDim] = { base: page.base, sig, url };
+    return url;
   }
 
   /* ---------------------------------------------------------------
@@ -1896,7 +1915,9 @@
           hint.classList.add("pulse");
           setTimeout(() => hint.classList.remove("pulse"), 900);
         }
-        renderHistory();
+        // Note: the home history grid is refreshed when the user actually
+        // navigates there (see the bottom-nav click handler) — no need to
+        // rebuild it here too on every autosave tick while it's off-screen.
       } catch (err) {
         console.error("autosave failed", err);
       }
