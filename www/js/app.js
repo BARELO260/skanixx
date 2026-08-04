@@ -2065,8 +2065,11 @@
    * --------------------------------------------------------------- */
   const isNative = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   if ("serviceWorker" in navigator && !isNative) {
+    let swRegistration = null;
     window.addEventListener("load", () => {
-      navigator.serviceWorker.register("sw.js").catch((err) => console.warn("SW registration failed", err));
+      navigator.serviceWorker.register("sw.js")
+        .then((reg) => { swRegistration = reg; })
+        .catch((err) => console.warn("SW registration failed", err));
     });
     // Once a new service worker activates and takes control, the page
     // that's currently open is still running the OLD cached code in
@@ -2083,6 +2086,22 @@
       reloadedForUpdate = true;
       window.location.reload();
     });
+    // Proactively check for a new version instead of waiting on the
+    // browser's own update heuristics, which are tied to full navigations
+    // — an installed/homescreen PWA can stay suspended in the background
+    // for days without one, silently missing updates a desktop browser
+    // (reloaded/reopened more often) would already have. Re-check every
+    // time the app is foregrounded, plus every 10 minutes while it stays
+    // open, so a genuine update surfaces (and auto-reloads, per above)
+    // within moments of the app actually being used.
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && swRegistration) {
+        swRegistration.update().catch(() => {});
+      }
+    });
+    setInterval(() => {
+      if (swRegistration) swRegistration.update().catch(() => {});
+    }, 10 * 60 * 1000);
   }
 
   /* ---------------------------------------------------------------
