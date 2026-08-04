@@ -582,6 +582,14 @@ input[type="range"]::-moz-range-thumb{
 .export-panel{ margin-top:22px; padding-top:18px; border-top:1px solid var(--border-soft); }
 .field{ display:block; margin-bottom:16px; }
 .field > span{ display:block; font-size:12.5px; color: var(--text-muted); margin-bottom:8px; }
+.check-row{
+  display:flex; align-items:flex-start; gap:10px; margin-bottom:16px; padding:12px 14px;
+  border-radius: var(--radius-md); background: var(--surface-2); border:1px solid var(--border); cursor:pointer;
+}
+.check-row input{ margin-top:3px; flex:none; width:16px; height:16px; accent-color: var(--purple); }
+.check-row strong{ display:block; font-size:13px; font-weight:600; }
+.check-row small{ display:block; margin-top:3px; color: var(--text-muted); font-size:12px; line-height:1.5; }
+.check-row.hidden{ display:none; }
 .field input[type="text"]{
   width:100%; padding:11px 13px; border-radius: var(--radius-md); border:1px solid var(--border);
   background: var(--surface); color: var(--text); font-size:14px; outline:none;
