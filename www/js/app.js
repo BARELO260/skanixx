@@ -1730,6 +1730,35 @@
     $("#outQuality").textContent = `${e.target.value}%`;
   });
 
+  function updateSearchablePdfVisibility() {
+    const format = document.querySelector('input[name="format"]:checked').value;
+    $("#searchablePdfRow").classList.toggle("hidden", format !== "pdf");
+  }
+  $$('input[name="format"]').forEach((r) => r.addEventListener("change", updateSearchablePdfVisibility));
+  updateSearchablePdfVisibility();
+
+  async function addSearchableTextLayer(pdf, pageIndex, page, pdfPageCanvas) {
+    const ocrCanvas = renderPageForOcr(page, 2400);
+    const { words } = await OCR.recognize(ocrCanvas, "spa");
+    if (!words || !words.length) return;
+    const scaleX = pdfPageCanvas.width / ocrCanvas.width;
+    const scaleY = pdfPageCanvas.height / ocrCanvas.height;
+    pdf.setPage(pageIndex + 1);
+    for (const word of words) {
+      const b = word.bbox;
+      if (!b) continue;
+      const x0 = b.x0 * scaleX, y0 = b.y0 * scaleY, x1 = b.x1 * scaleX, y1 = b.y1 * scaleY;
+      const boxW = x1 - x0, boxH = y1 - y0;
+      if (boxW <= 0 || boxH <= 0) continue;
+      // Font size approximates the word's real height; the text is
+      // invisible so exact glyph-width matching doesn't matter visually —
+      // anchoring each word at its real start position (x0,y1) is what
+      // keeps click-to-select regions lined up with the image underneath.
+      pdf.setFontSize(Math.max(4, boxH * 0.82));
+      pdf.text(word.text, x0, y1, { renderingMode: "invisible" });
+    }
+  }
+
   async function buildExportBlobs(onProgress) {
     const format = document.querySelector('input[name="format"]:checked').value;
     const quality = Number($("#rangeQuality").value) / 100;
@@ -1759,6 +1788,20 @@
         const dataUrl = canvas.toDataURL("image/jpeg", Math.max(0.35, quality));
         pdf.addImage(dataUrl, "JPEG", 0, 0, w, h);
       });
+
+      if ($("#searchablePdfCheck").checked) {
+        for (let i = 0; i < State.currentPages.length; i++) {
+          if (onProgress) onProgress(i + 1, State.currentPages.length, "ocr");
+          try {
+            await addSearchableTextLayer(pdf, i, State.currentPages[i], pages[i]);
+          } catch (err) {
+            // OCR failing on one page shouldn't block the export — the PDF
+            // still has that page's image, just without a text layer.
+            console.warn("OCR text layer failed for page", i, err);
+          }
+        }
+      }
+
       const blob = pdf.output("blob");
       return [{ blob, filename: `${name}.pdf`, mime: "application/pdf" }];
     }
@@ -1865,8 +1908,12 @@
     const btn = $("#saveExportBtn");
     btn.disabled = true; const original = btn.textContent; btn.textContent = "Exportando…";
     try {
-      const files = await buildExportBlobs((done, total) => {
-        btn.textContent = total > 1 ? `Exportando ${done}/${total}…` : "Exportando…";
+      const files = await buildExportBlobs((done, total, phase) => {
+        if (phase === "ocr") {
+          btn.textContent = `Reconociendo texto ${done}/${total}…`;
+        } else {
+          btn.textContent = total > 1 ? `Exportando ${done}/${total}…` : "Exportando…";
+        }
       });
       files.forEach((f) => downloadBlob(f.blob, f.filename));
       await persistCurrentDocument();
