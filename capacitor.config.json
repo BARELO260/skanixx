@@ -1,7 +1,7 @@
 {
   "appId": "com.skanix.app",
   "appName": "Skanix",
-  "webDir": "www",
+  "webDir": "docs",
   "backgroundColor": "#0B0E1A",
   "server": {
     "androidScheme": "https"
