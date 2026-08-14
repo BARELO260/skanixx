@@ -3,10 +3,25 @@
  * Real document-quadrilateral detector (no external CV library, fully offline).
  *
  * Pipeline: grayscale -> box blur -> Sobel gradient magnitude -> adaptive
- * threshold -> binary edge mask -> dilate -> 8-connected components ->
- * convex hull (monotone chain) per component -> reduce hull to 4 points
- * (Visvalingam-Whyatt style min-area-loss simplification) -> validate
- * (area fraction + interior angles) -> pick best scoring quad.
+ * threshold -> binary edge mask -> dilate (closes small gaps) -> flood-fill
+ * from the frame border over non-edge pixels ("outside") -> whatever is
+ * left (not outside, not an edge pixel) is "interior" -> take the largest
+ * interior region -> convex hull -> reduce to 4 points (Visvalingam-Whyatt
+ * style min-area-loss simplification) -> validate (area fraction + interior
+ * angles) -> pick best scoring quad.
+ *
+ * Why flood-fill instead of tracing the edge outline directly: a document's
+ * outline in a real photo is rarely one perfectly closed 1px chain — a
+ * shadow, a low-contrast side against a pale desk, or a reflection breaks
+ * it into several disconnected fragments. Grouping those fragments back
+ * into "the document" is unreliable. Flood-filling the *background* from
+ * the frame border instead only needs the outline to be solid enough to
+ * block the flood (which dilation helps with) — a small gap still mostly
+ * blocks it, rather than fragmenting the shape into unusable pieces. This
+ * also means the result is a filled region (real area), not a thin
+ * outline, so ranking candidates by size directly corresponds to on-screen
+ * area instead of edge-pixel count (which a busy textured background can
+ * rack up far more of than a document's clean 4-line outline).
  *
  * Exposes:
  *   EdgeDetector.detectFromVideoFrame(videoEl) -> {corners, score} | null
@@ -16,8 +31,8 @@
  *     corners are in the source canvas's pixel space.
  */
 const EdgeDetector = (() => {
-  const ANALYSIS_WIDTH = 220;
-  const MAX_COMPONENTS_CONSIDERED = 10; // biggest few blobs that could plausibly be the document
+  const ANALYSIS_WIDTH = 260;
+  const DILATE_ITERATIONS = 3;
   let analysisCanvas = null;
   let analysisCtx = null;
 
@@ -69,8 +84,6 @@ const EdgeDetector = (() => {
     const blurred = boxBlur3(gray, w, h);
     const mag = sobelMagnitude(blurred, w, h);
 
-    // Compute gradient statistics once — reused by every threshold attempt
-    // below instead of re-scanning the whole array each time.
     let sum = 0;
     for (let i = 0; i < mag.length; i++) sum += mag[i];
     const mean = sum / mag.length;
@@ -78,52 +91,57 @@ const EdgeDetector = (() => {
     for (let i = 0; i < mag.length; i++) variance += (mag[i] - mean) * (mag[i] - mean);
     const std = Math.sqrt(variance / mag.length);
 
-    let best = tryThreshold(mag, w, h, mean, std, 1.15);
-    if (!best) best = tryThreshold(mag, w, h, mean, std, 0.75);
+    // Try progressively looser edge thresholds until a plausible document
+    // region is found. Looser thresholds pick up fainter edges (helps with
+    // low-contrast sides) at the cost of more background noise, which is
+    // why we only fall back to them if the stricter pass finds nothing.
+    let best = tryThreshold(mag, w, h, mean, std, 1.3);
+    if (!best) best = tryThreshold(mag, w, h, mean, std, 0.9);
+    if (!best) best = tryThreshold(mag, w, h, mean, std, 0.55);
     return best;
   }
 
   function tryThreshold(mag, w, h, mean, std, kFactor) {
-    const thresh = Math.max(mean + std * kFactor, 12);
+    const thresh = Math.max(mean + std * kFactor, 10);
 
-    const mask = new Uint8Array(w * h);
-    for (let i = 0; i < mag.length; i++) mask[i] = mag[i] > thresh ? 1 : 0;
-    dilate(mask, w, h, 2);
+    const edgeMask = new Uint8Array(w * h);
+    for (let i = 0; i < mag.length; i++) edgeMask[i] = mag[i] > thresh ? 1 : 0;
+    dilate(edgeMask, w, h, DILATE_ITERATIONS);
 
-    const minSize = Math.max(25, Math.floor(w * h * 0.004));
-    let components = connectedComponents(mask, w, h, minSize);
-    if (!components.length) return null;
+    // Flood-fill the background from the frame border, blocked by the
+    // (dilated) edge mask acting as walls.
+    const outside = floodFillOutside(edgeMask, w, h);
 
-    // Only the biggest few blobs can plausibly be the document outline.
-    // Rank by bounding-box area, not raw edge-pixel count: a textured
-    // background (wood grain, carpet, tiles) can scatter far more total
-    // edge pixels than a document's thin 4-line outline while covering
-    // less actual area — ranking by point count was discarding the real
-    // document candidate before its hull/area was ever computed.
-    if (components.length > MAX_COMPONENTS_CONSIDERED) {
-      for (const c of components) {
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        for (const p of c.points) {
-          if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
-          if (p.y < minY) minY = p.y; if (p.y > maxY) maxY = p.y;
-        }
-        c.bboxArea = (maxX - minX) * (maxY - minY);
-      }
-      components = components
-        .sort((a, b) => b.bboxArea - a.bboxArea)
-        .slice(0, MAX_COMPONENTS_CONSIDERED);
+    // Interior = neither background nor an edge-wall pixel itself.
+    const interior = new Uint8Array(w * h);
+    for (let i = 0; i < interior.length; i++) {
+      interior[i] = !edgeMask[i] && !outside[i] ? 1 : 0;
     }
+    // The wall eats into the interior by roughly DILATE_ITERATIONS pixels
+    // all the way around — grow the interior back out by the same amount
+    // so the detected boundary lands back near the true document edge
+    // instead of noticeably inside it.
+    dilate(interior, w, h, DILATE_ITERATIONS);
+
+    const minSize = Math.max(40, Math.floor(w * h * 0.01));
+    const components = connectedComponents(interior, w, h, minSize);
+    if (!components.length) return null;
 
     const frameArea = w * h;
     let best = null;
-    for (const comp of components) {
-      const hull = convexHull(comp.points);
+    // Only the largest few interior regions can plausibly be the document —
+    // ranking by pixel count here is meaningful (unlike edge-pixel counts)
+    // since these are real filled areas.
+    components.sort((a, b) => b.points.length - a.points.length);
+    const candidates = components.slice(0, 5);
+    for (const comp of candidates) {
+      const hull = convexHull(boundaryPoints(comp.points));
       if (hull.length < 4) continue;
       const quad = reduceToQuad(hull);
       if (!quad) continue;
       const area = polygonArea(quad);
       const areaFrac = area / frameArea;
-      if (areaFrac < 0.12 || areaFrac > 0.92) continue;
+      if (areaFrac < 0.06 || areaFrac > 0.96) continue;
       if (!isRoughlyConvexQuad(quad)) continue;
       const ordered = orderCorners(quad);
       const rectangularity = quadRectangularity(ordered);
@@ -131,6 +149,52 @@ const EdgeDetector = (() => {
       if (!best || score > best.score) best = { corners: ordered, score };
     }
     return best;
+  }
+
+  // Flood fill (4-connected, so it can't sneak through a diagonal touch
+  // between two wall pixels) from every non-wall border pixel, marking
+  // everything reachable as "outside". Iterative with an explicit stack to
+  // avoid recursion limits on larger analysis sizes.
+  function floodFillOutside(edgeMask, w, h) {
+    const outside = new Uint8Array(w * h);
+    const stack = [];
+    const seed = (x, y) => {
+      const idx = y * w + x;
+      if (!edgeMask[idx] && !outside[idx]) {
+        outside[idx] = 1;
+        stack.push(idx);
+      }
+    };
+    for (let x = 0; x < w; x++) { seed(x, 0); seed(x, h - 1); }
+    for (let y = 0; y < h; y++) { seed(0, y); seed(w - 1, y); }
+
+    while (stack.length) {
+      const cur = stack.pop();
+      const cy = (cur / w) | 0;
+      const cx = cur - cy * w;
+      if (cx > 0) { const idx = cur - 1; if (!edgeMask[idx] && !outside[idx]) { outside[idx] = 1; stack.push(idx); } }
+      if (cx < w - 1) { const idx = cur + 1; if (!edgeMask[idx] && !outside[idx]) { outside[idx] = 1; stack.push(idx); } }
+      if (cy > 0) { const idx = cur - w; if (!edgeMask[idx] && !outside[idx]) { outside[idx] = 1; stack.push(idx); } }
+      if (cy < h - 1) { const idx = cur + w; if (!edgeMask[idx] && !outside[idx]) { outside[idx] = 1; stack.push(idx); } }
+    }
+    return outside;
+  }
+
+  // Extract just the boundary pixels of a filled region (points with at
+  // least one non-member 4-neighbor). The convex hull only needs the
+  // outline, and this keeps the hull's input set small even for a large
+  // filled document region — hull cost stays cheap regardless of how much
+  // of the frame the document fills.
+  function boundaryPoints(points) {
+    const set = new Set(points.map((p) => p.x + "," + p.y));
+    const boundary = [];
+    for (const p of points) {
+      const isEdge =
+        !set.has((p.x - 1) + "," + p.y) || !set.has((p.x + 1) + "," + p.y) ||
+        !set.has(p.x + "," + (p.y - 1)) || !set.has(p.x + "," + (p.y + 1));
+      if (isEdge) boundary.push(p);
+    }
+    return boundary.length >= 3 ? boundary : points;
   }
 
   function toGray(data, w, h) {
