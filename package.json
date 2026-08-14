@@ -4,7 +4,7 @@
   "description": "Skanix — escáner de documentos offline-first.",
   "private": true,
   "scripts": {
-    "start": "npx serve www -l 8080",
+    "start": "npx serve docs -l 8080",
     "cap:sync": "npx cap sync",
     "cap:android": "npx cap open android",
     "cap:ios": "npx cap open ios"
