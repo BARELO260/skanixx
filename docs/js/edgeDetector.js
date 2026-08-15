@@ -31,7 +31,7 @@
  *     corners are in the source canvas's pixel space.
  */
 const EdgeDetector = (() => {
-  const ANALYSIS_WIDTH = 260;
+  const ANALYSIS_WIDTH = 200;
   const DILATE_RADIUS = 3;
   let analysisCanvas = null;
   let analysisCtx = null;
@@ -128,6 +128,8 @@ const EdgeDetector = (() => {
     if (!components.length) return null;
 
     const frameArea = w * h;
+    const cx0 = w / 2, cy0 = h / 2;
+    const maxDist = Math.hypot(cx0, cy0);
     let best = null;
     // Only the largest few interior regions can plausibly be the document —
     // ranking by pixel count here is meaningful (unlike edge-pixel counts)
@@ -145,7 +147,10 @@ const EdgeDetector = (() => {
       if (!isRoughlyConvexQuad(quad)) continue;
       const ordered = orderCorners(quad);
       const rectangularity = quadRectangularity(ordered);
-      const score = areaFrac * rectangularity;
+      const centroidX = (ordered[0].x + ordered[1].x + ordered[2].x + ordered[3].x) / 4;
+      const centroidY = (ordered[0].y + ordered[1].y + ordered[2].y + ordered[3].y) / 4;
+      const centerScore = 1 - Math.min(1, Math.hypot(centroidX - cx0, centroidY - cy0) / maxDist);
+      const score = areaFrac * rectangularity * (0.55 + 0.45 * centerScore);
       if (!best || score > best.score) best = { corners: ordered, score };
     }
     return best;
