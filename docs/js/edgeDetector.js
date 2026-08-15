@@ -32,7 +32,7 @@
  */
 const EdgeDetector = (() => {
   const ANALYSIS_WIDTH = 260;
-  const DILATE_ITERATIONS = 3;
+  const DILATE_RADIUS = 3;
   let analysisCanvas = null;
   let analysisCtx = null;
 
@@ -106,7 +106,7 @@ const EdgeDetector = (() => {
 
     const edgeMask = new Uint8Array(w * h);
     for (let i = 0; i < mag.length; i++) edgeMask[i] = mag[i] > thresh ? 1 : 0;
-    dilate(edgeMask, w, h, DILATE_ITERATIONS);
+    dilateSquare(edgeMask, w, h, DILATE_RADIUS);
 
     // Flood-fill the background from the frame border, blocked by the
     // (dilated) edge mask acting as walls.
@@ -117,11 +117,11 @@ const EdgeDetector = (() => {
     for (let i = 0; i < interior.length; i++) {
       interior[i] = !edgeMask[i] && !outside[i] ? 1 : 0;
     }
-    // The wall eats into the interior by roughly DILATE_ITERATIONS pixels
-    // all the way around — grow the interior back out by the same amount
-    // so the detected boundary lands back near the true document edge
+    // The wall eats into the interior by roughly DILATE_RADIUS pixels all
+    // the way around — grow the interior back out by the same amount so
+    // the detected boundary lands back near the true document edge
     // instead of noticeably inside it.
-    dilate(interior, w, h, DILATE_ITERATIONS);
+    dilateSquare(interior, w, h, DILATE_RADIUS);
 
     const minSize = Math.max(40, Math.floor(w * h * 0.01));
     const components = connectedComponents(interior, w, h, minSize);
@@ -206,21 +206,26 @@ const EdgeDetector = (() => {
   }
 
   function boxBlur3(src, w, h) {
-    const out = new Float32Array(w * h);
+    // Separable 3x3 mean filter: horizontal sliding sum, then vertical.
+    // Mathematically identical to the naive 9-neighbor average, just
+    // computed as two O(n) passes instead of one O(9n) pass.
+    const tmp = new Float32Array(w * h);
     for (let y = 0; y < h; y++) {
+      const row = y * w;
       for (let x = 0; x < w; x++) {
-        let sum = 0, count = 0;
-        for (let dy = -1; dy <= 1; dy++) {
-          const yy = y + dy;
-          if (yy < 0 || yy >= h) continue;
-          for (let dx = -1; dx <= 1; dx++) {
-            const xx = x + dx;
-            if (xx < 0 || xx >= w) continue;
-            sum += src[yy * w + xx];
-            count++;
-          }
-        }
-        out[y * w + x] = sum / count;
+        const x0 = Math.max(0, x - 1), x1 = Math.min(w - 1, x + 1);
+        let sum = 0;
+        for (let xx = x0; xx <= x1; xx++) sum += src[row + xx];
+        tmp[row + x] = sum / (x1 - x0 + 1);
+      }
+    }
+    const out = new Float32Array(w * h);
+    for (let x = 0; x < w; x++) {
+      for (let y = 0; y < h; y++) {
+        const y0 = Math.max(0, y - 1), y1 = Math.min(h - 1, y + 1);
+        let sum = 0;
+        for (let yy = y0; yy <= y1; yy++) sum += tmp[yy * w + x];
+        out[y * w + x] = sum / (y1 - y0 + 1);
       }
     }
     return out;
@@ -244,25 +249,37 @@ const EdgeDetector = (() => {
     return mag;
   }
 
-  function dilate(mask, w, h, iterations) {
-    for (let it = 0; it < iterations; it++) {
-      const copy = mask.slice();
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          if (copy[y * w + x]) continue;
-          let on = false;
-          for (let dy = -1; dy <= 1 && !on; dy++) {
-            const yy = y + dy;
-            if (yy < 0 || yy >= h) continue;
-            for (let dx = -1; dx <= 1; dx++) {
-              const xx = x + dx;
-              if (xx < 0 || xx >= w) continue;
-              if (copy[yy * w + xx]) { on = true; break; }
-            }
-          }
-          if (on) mask[y * w + x] = 1;
-        }
+  // 1D sliding-window maximum via monotonic deque — O(n) total regardless
+  // of radius (verified against a naive reference implementation).
+  function slidingMax1D(src, srcOffset, srcStride, n, radius, dst, dstOffset, dstStride) {
+    const buf = new Int32Array(n);
+    let head = 0, tail = 0;
+    for (let i = 0; i < n + radius; i++) {
+      if (i < n) {
+        const vi = src[srcOffset + i * srcStride];
+        while (tail > head && src[srcOffset + buf[tail - 1] * srcStride] <= vi) tail--;
+        buf[tail++] = i;
       }
+      const j = i - radius;
+      if (j >= 0 && j < n) {
+        while (buf[head] < j - radius) head++;
+        dst[dstOffset + j * dstStride] = src[srcOffset + buf[head] * srcStride];
+      }
+    }
+  }
+
+  // Square dilation by `radius` (i.e. every pixel becomes 1 if any pixel
+  // within a (2*radius+1)^2 neighborhood is 1) via two separable 1D max
+  // passes — mathematically equivalent to iterating a naive 3x3 dilation
+  // `radius` times, but O(1)-amortized-per-pixel instead of O(radius*9).
+  function dilateSquare(mask, w, h, radius) {
+    if (radius <= 0) return;
+    const tmp = new Uint8Array(w * h);
+    for (let y = 0; y < h; y++) {
+      slidingMax1D(mask, y * w, 1, w, radius, tmp, y * w, 1);
+    }
+    for (let x = 0; x < w; x++) {
+      slidingMax1D(tmp, x, w, h, radius, mask, x, w);
     }
   }
 
