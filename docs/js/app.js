@@ -104,7 +104,9 @@
    * View router
    * --------------------------------------------------------------- */
   const Router = {
-    show(viewId) {
+    current: "view-home",
+    show(viewId, opts) {
+      const fromHistory = opts && opts.fromHistory;
       $$(".view").forEach((v) => v.classList.remove("view-active"));
       $(`#${viewId}`).classList.add("view-active");
       $$(".nav-btn[data-nav]").forEach((b) =>
@@ -112,8 +114,37 @@
       );
       window.scrollTo(0, 0);
       if (viewId !== "view-camera") { CameraController.stop(); EdgeLoop.stop(); }
+      if (!fromHistory && viewId !== Router.current) {
+        history.pushState({ view: viewId }, "", "#" + viewId);
+      }
+      Router.current = viewId;
     },
   };
+
+  // Baseline history entry for the initial view — without this, the very
+  // first back press has no app-internal history to consume and the
+  // browser/OS just exits the page immediately. With it, that first press
+  // is correctly the LAST thing that gets consumed (after all real view
+  // transitions have been popped), at which point falling through to the
+  // normal "leave the app" behavior is actually correct.
+  history.replaceState({ view: "view-home" }, "", location.pathname + location.search);
+
+  window.addEventListener("popstate", (e) => {
+    // A back press while a dialog/modal is open closes the dialog instead
+    // of navigating the view underneath it — and pushes a fresh entry to
+    // cancel out the navigation the browser just performed, so that one
+    // physical back press = one logical "undo" step, matching what the
+    // user actually sees on screen.
+    const openDialog = $$(".dialog-backdrop").find((d) => !d.classList.contains("hidden"));
+    if (openDialog) {
+      const cancelBtn = openDialog.querySelector("#signatureCancelBtn, #textAnnotateCancelBtn, #confirmCancel");
+      (cancelBtn || openDialog.querySelector(".btn-secondary"))?.click();
+      history.pushState({ view: Router.current }, "", "#" + Router.current);
+      return;
+    }
+    const targetView = (e.state && e.state.view) || "view-home";
+    Router.show(targetView, { fromHistory: true });
+  });
 
   /* ---------------------------------------------------------------
    * LIVE EDGE DETECTION — real-time document outline over the camera
@@ -124,7 +155,7 @@
     const SMOOTH_ALPHA = 0.35;
     const MAX_MISS = 6;
     const STABLE_NEEDED = 4;
-    const AUTO_HOLD_EXTRA = 5; // extra stable ticks after "locked" before auto-firing (~650ms hold)
+    const AUTO_HOLD_EXTRA = 9; // extra stable ticks after "locked" before auto-firing (~1.3s hold)
     const DETECT_INTERVAL = 150; // ms between analysis passes
 
     let raf = null, timer = null, running = false;
@@ -291,7 +322,7 @@
     editingExistingIndex: null, // index into currentPages when re-editing
     pendingDetectedCorners: null, // live-detected quad from the last shutter press
     editingDocId: null,   // id of the saved document being edited, or null for a new one
-    autoCaptureEnabled: localStorage.getItem("skanix-autocapture") !== "off",
+    autoCaptureEnabled: localStorage.getItem("skanix-autocapture") === "on",
   };
 
   function newPage(baseCanvas) {
@@ -1788,7 +1819,7 @@
     // multi-page render before any feedback can paint.
     const pages = [];
     for (let i = 0; i < State.currentPages.length; i++) {
-      pages.push(renderPage(State.currentPages[i], 2200));
+      pages.push(renderPage(State.currentPages[i], 3600));
       if (onProgress) onProgress(i + 1, State.currentPages.length);
       await new Promise((r) => requestAnimationFrame(r));
     }
