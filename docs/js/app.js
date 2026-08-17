@@ -152,11 +152,12 @@
    * temporally smoothed so the overlay glides instead of jittering.
    * --------------------------------------------------------------- */
   const EdgeLoop = (() => {
-    const SMOOTH_ALPHA = 0.35;
+    const SMOOTH_ALPHA = 0.32;
     const MAX_MISS = 6;
-    const STABLE_NEEDED = 4;
-    const AUTO_HOLD_EXTRA = 9; // extra stable ticks after "locked" before auto-firing (~1.3s hold)
-    const DETECT_INTERVAL = 150; // ms between analysis passes
+    const STABLE_NEEDED = 5;
+    const AUTO_HOLD_EXTRA = 7; // roughly 1.1 s after visual lock
+    const DETECT_INTERVAL = 130; // responsive without monopolising the main thread
+    const MAX_LOCK_MOVEMENT = 0.026; // fraction of the preview diagonal
 
     let raf = null, timer = null, running = false;
     let smoothed = null;   // {corners, score} in video-native pixel space
@@ -209,7 +210,14 @@
           const result = EdgeDetector.detectFromVideoFrame(videoEl);
           if (result) {
             missStreak = 0;
-            stableStreak = Math.min(stableStreak + 1, 99);
+            // A result existing is not enough to call it stable: noisy
+            // detections used to become "locked" merely by flickering in
+            // different positions for a few frames, which triggered bad
+            // automatic captures. Require geometric agreement too.
+            const motion = smoothed ? quadMotion(smoothed.corners, result.corners, videoEl.videoWidth, videoEl.videoHeight) : 0;
+            stableStreak = (!smoothed || motion <= MAX_LOCK_MOVEMENT)
+              ? Math.min(stableStreak + 1, 99)
+              : 0;
             smoothed = !smoothed ? result : {
               corners: smoothed.corners.map((c, i) => ({
                 x: c.x + (result.corners[i].x - c.x) * SMOOTH_ALPHA,
@@ -307,6 +315,11 @@
 
     function currentQuad() {
       return smoothed ? smoothed.corners : null;
+    }
+
+    function quadMotion(previous, next, w, h) {
+      const diagonal = Math.max(1, Math.hypot(w, h));
+      return previous.reduce((sum, p, i) => sum + Math.hypot(p.x - next[i].x, p.y - next[i].y), 0) / (previous.length * diagonal);
     }
 
     return { start, stop, currentQuad };
