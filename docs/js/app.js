@@ -159,23 +159,29 @@
     const DETECT_INTERVAL = 130; // responsive without monopolising the main thread
     const MAX_LOCK_MOVEMENT = 0.026; // fraction of the preview diagonal
 
-    let raf = null, timer = null, running = false;
+    let raf = null, timer = null, running = false, detectionEnabled = false;
     let smoothed = null;   // {corners, score} in video-native pixel space
-    let missStreak = 0, stableStreak = 0;
+    let missStreak = 0, stableStreak = 0, slowFallbackTick = 0;
     let firedForThisLock = false;
     let onAutoCapture = null;
     let overlayCanvas = null, overlayCtx = null, videoEl = null;
 
-    function start(video, autoCaptureCallback) {
+    function start(video, autoCaptureCallback, enabled = true) {
       stop();
       videoEl = video;
       onAutoCapture = autoCaptureCallback || null;
       overlayCanvas = $("#edgeOverlay");
       overlayCtx = overlayCanvas.getContext("2d");
-      smoothed = null; missStreak = 0; stableStreak = 0; firedForThisLock = false;
-      running = true;
-      setState("searching");
+      smoothed = null; missStreak = 0; stableStreak = 0; slowFallbackTick = 0; firedForThisLock = false;
+      running = true; detectionEnabled = enabled;
       window.addEventListener("resize", onResize);
+      if (detectionEnabled) startDetection();
+      else setState("manual");
+    }
+
+    function startDetection() {
+      if (!running || !detectionEnabled) return;
+      setState("searching");
       tick();
       raf = requestAnimationFrame(renderLoop);
     }
@@ -201,13 +207,18 @@
       const shutter = $("#shutterBtn");
       if (shutter) shutter.classList.remove("ready");
       smoothed = null;
+      detectionEnabled = false;
     }
 
     function tick() {
-      if (!running) return;
+      if (!running || !detectionEnabled) return;
       try {
         if (videoEl.readyState >= 2) {
-          const result = EdgeDetector.detectFromVideoFrame(videoEl);
+          const stage = videoEl.closest(".camera-stage");
+          const rect = stage && CameraController.getPreviewSourceRect(stage.clientWidth / stage.clientHeight);
+          // The line-based fallback is intentionally sampled less often:
+          // it helps pale/broken borders without making a miss freeze video.
+          const result = rect && EdgeDetector.detectFromVideoFrame(videoEl, rect, { allowLineFallback: (++slowFallbackTick % 4) === 0 });
           if (result) {
             missStreak = 0;
             // A result existing is not enough to call it stable: noisy
@@ -242,11 +253,11 @@
       } catch (err) {
         // detection must never break the capture flow
       }
-      timer = setTimeout(tick, DETECT_INTERVAL);
+      if (running && detectionEnabled) timer = setTimeout(tick, DETECT_INTERVAL);
     }
 
     function renderLoop() {
-      if (!running) return;
+      if (!running || !detectionEnabled) return;
       drawOverlay();
       raf = requestAnimationFrame(renderLoop);
     }
@@ -267,13 +278,11 @@
       overlayCtx.clearRect(0, 0, cw, ch);
       if (!smoothed || !videoEl.videoWidth) return;
 
-      const vw = videoEl.videoWidth, vh = videoEl.videoHeight;
-      const scale = Math.max(cw / vw, ch / vh); // object-fit: cover mapping
-      const drawnW = vw * scale, drawnH = vh * scale;
-      const offX = (cw - drawnW) / 2, offY = (ch - drawnH) / 2;
+      const rect = CameraController.getPreviewSourceRect(cw / ch);
+      if (!rect) return;
       const toDisplay = (p) => ({
-        x: Math.max(0, Math.min(cw, p.x * scale + offX)),
-        y: Math.max(0, Math.min(ch, p.y * scale + offY)),
+        x: Math.max(0, Math.min(cw, (p.x - rect.sx) * cw / rect.sw)),
+        y: Math.max(0, Math.min(ch, (p.y - rect.sy) * ch / rect.sh)),
       });
       const pts = smoothed.corners.map(toDisplay);
 
@@ -309,12 +318,23 @@
       stage.classList.toggle("edge-locked", state === "locked");
       stage.classList.toggle("edge-searching", state === "searching");
       if (shutter) shutter.classList.toggle("ready", state === "locked");
-      if (hint) hint.textContent = state === "locked" ? "Documento detectado · toca para capturar" : "Buscando el documento…";
+      if (hint) hint.textContent = state === "manual" ? "Modo manual · toca para capturar" : state === "locked" ? "Documento detectado · toca para capturar" : "Buscando el documento…";
       if (badgeText) badgeText.textContent = state === "locked" ? "Listo" : "Buscando…";
     }
 
     function currentQuad() {
-      return smoothed ? smoothed.corners : null;
+      return detectionEnabled && smoothed ? smoothed.corners : null;
+    }
+
+    function setEnabled(enabled) {
+      if (!running || detectionEnabled === enabled) return;
+      detectionEnabled = enabled;
+      smoothed = null; missStreak = 0; stableStreak = 0; slowFallbackTick = 0; firedForThisLock = false;
+      if (timer) clearTimeout(timer);
+      if (raf) cancelAnimationFrame(raf);
+      timer = null; raf = null;
+      if (overlayCtx && overlayCanvas) overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+      if (enabled) startDetection(); else setState("manual");
     }
 
     function quadMotion(previous, next, w, h) {
@@ -322,7 +342,7 @@
       return previous.reduce((sum, p, i) => sum + Math.hypot(p.x - next[i].x, p.y - next[i].y), 0) / (previous.length * diagonal);
     }
 
-    return { start, stop, currentQuad };
+    return { start, stop, currentQuad, setEnabled };
   })();
 
   /* ---------------------------------------------------------------
@@ -638,7 +658,7 @@
     $("#cameraVideo")?.classList.remove("hidden");
     try {
       await CameraController.start($("#cameraVideo"));
-      EdgeLoop.start($("#cameraVideo"), capturePhoto);
+      EdgeLoop.start($("#cameraVideo"), capturePhoto, State.autoCaptureEnabled);
     } catch (err) {
       showCameraError(err);
     }
@@ -678,70 +698,34 @@
   });
   $("#cameraSwitchBtn").addEventListener("click", async () => {
     await CameraController.switchCamera();
-    EdgeLoop.start($("#cameraVideo"), capturePhoto); // fresh stream -> restart detection cleanly
+    EdgeLoop.start($("#cameraVideo"), capturePhoto, State.autoCaptureEnabled); // fresh stream -> restart detection cleanly
   });
-  // Center-crops `canvas` to `targetAspect` (width/height), trimming only —
-  // never scales, so full sensor resolution/quality is preserved.
-  function cropCanvasToAspect(canvas, targetAspect) {
-    const w = canvas.width, h = canvas.height;
-    const currentAspect = w / h;
-    let cropW = w, cropH = h;
-    if (currentAspect > targetAspect) {
-      // Photo is proportionally wider than what was shown live — trim sides.
-      cropW = Math.round(h * targetAspect);
-    } else if (currentAspect < targetAspect) {
-      // Photo is proportionally taller than what was shown live — trim top/bottom.
-      cropH = Math.round(w / targetAspect);
-    } else {
-      return canvas; // already matches, nothing to trim
-    }
-    const sx = Math.round((w - cropW) / 2), sy = Math.round((h - cropH) / 2);
-    const out = document.createElement("canvas");
-    out.width = cropW; out.height = cropH;
-    out.getContext("2d").drawImage(canvas, sx, sy, cropW, cropH, 0, 0, cropW, cropH);
-    return out;
-  }
 
+  let captureInFlight = false;
   async function capturePhoto() {
-    if (!CameraController.isActive()) return;
+    if (!CameraController.isActive() || captureInFlight) return;
+    captureInFlight = true;
+    try {
     SoundFX.shutter();
     const flash = $("#flashOverlay");
     flash.classList.remove("flashing"); void flash.offsetWidth; flash.classList.add("flashing");
 
-    // What the user actually saw live: the camera-stage box, with the video
-    // shown via object-fit:cover inside it. Read this now, before capture,
-    // so we know exactly what framing to reproduce in the still photo.
+    // The controller crops the *same stream* with the exact object-fit:cover
+    // geometry used by this stage. This eliminates the still-photo FOV swap.
     const stage = document.querySelector(".camera-stage");
     const stageAspect = stage ? stage.clientWidth / stage.clientHeight : null;
 
     const liveQuad = EdgeLoop.currentQuad(); // fallback only, live-preview pixel space
 
-    let canvas = $("#captureCanvas");
-    await CameraController.captureFrame(canvas);
-    // The still photo (especially via ImageCapture, which asks the sensor
-    // for its own native photo mode) very often comes back in a different
-    // aspect ratio / field of view than the cropped preview the user was
-    // actually framing against — that mismatch is what made captured
-    // photos look "zoomed out" compared to what was on screen. Trim the
-    // photo to the same aspect the preview displayed, centered, at full
-    // resolution, so the framing matches exactly.
-    if (stageAspect) {
-      canvas = cropCanvasToAspect(canvas, stageAspect);
-    }
-    // Detect directly on the captured (now correctly-framed) photo's own
-    // pixels rather than rescaling the live-preview quad. ImageCapture.
-    // takePhoto() commonly returns a different resolution *and* field of
-    // view than the video preview stream — a uniform x/y rescale of the
-    // preview quad silently distorts in that case, which is exactly why
-    // the crop corners could end up somewhere other than the real edges.
-    // Detecting on the actual captured image is correct by construction.
+    const canvas = $("#captureCanvas");
+    await CameraController.captureFrame(canvas, stageAspect);
+    // Re-detect on the captured pixels, but retain the live result as a
+    // direct geometry-preserving fallback if the still analysis is unsure.
     const freshQuad = EdgeDetector.detectFromCanvas(canvas);
     if (freshQuad) {
       State.pendingDetectedCorners = freshQuad.corners;
-    } else if (liveQuad && $("#cameraVideo").videoWidth) {
-      const video = $("#cameraVideo");
-      const sx = canvas.width / video.videoWidth, sy = canvas.height / video.videoHeight;
-      State.pendingDetectedCorners = liveQuad.map((p) => ({ x: p.x * sx, y: p.y * sy }));
+    } else if (liveQuad) {
+      State.pendingDetectedCorners = liveQuad.map((p) => CameraController.mapVideoPointToCapture(p)).filter(Boolean);
     } else {
       State.pendingDetectedCorners = null;
     }
@@ -749,6 +733,12 @@
     State.uploadQueue.push(img);
     // keep camera open for rapid multi-page capture; queue processes in background
     processNextInQueue();
+    } catch (err) {
+      console.error("capture failed", err);
+      toast("No se pudo capturar la imagen. Inténtalo de nuevo.", "error");
+    } finally {
+      captureInFlight = false;
+    }
   }
   $("#shutterBtn").addEventListener("click", capturePhoto);
 
@@ -756,6 +746,7 @@
     State.autoCaptureEnabled = !State.autoCaptureEnabled;
     localStorage.setItem("skanix-autocapture", State.autoCaptureEnabled ? "on" : "off");
     syncAutoCaptureToggle();
+    EdgeLoop.setEnabled(State.autoCaptureEnabled);
   });
   function syncAutoCaptureToggle() {
     const btn = $("#autoCaptureToggle");
