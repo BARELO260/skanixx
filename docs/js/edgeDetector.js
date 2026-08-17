@@ -31,8 +31,11 @@
  *     corners are in the source canvas's pixel space.
  */
 const EdgeDetector = (() => {
-  const ANALYSIS_WIDTH = 200;
-  const DILATE_RADIUS = 3;
+  // The viewfinder is portrait, so 224 px wide produces ~67k analysis
+  // pixels: enough edge detail while keeping allocations below the level
+  // that visibly affects a 30fps camera preview.
+  const ANALYSIS_WIDTH = 224;
+  const DILATE_RADIUS = 2;
   let analysisCanvas = null;
   let analysisCtx = null;
 
@@ -48,18 +51,21 @@ const EdgeDetector = (() => {
     return analysisCanvas;
   }
 
-  function detectFromVideoFrame(video) {
+  function detectFromVideoFrame(video, sourceRect = null, { allowLineFallback = true } = {}) {
     const vw = video.videoWidth, vh = video.videoHeight;
     if (!vw || !vh) return null;
-    const scale = ANALYSIS_WIDTH / vw;
-    const aw = ANALYSIS_WIDTH;
-    const ah = Math.max(1, Math.round(vh * scale));
+    const rect = sourceRect || { sx: 0, sy: 0, sw: vw, sh: vh };
+    const scale = Math.min(1, ANALYSIS_WIDTH / rect.sw);
+    const aw = Math.max(1, Math.round(rect.sw * scale));
+    const ah = Math.max(1, Math.round(rect.sh * scale));
     getAnalysisCanvas(aw, ah);
-    analysisCtx.drawImage(video, 0, 0, aw, ah);
-    const quad = runPipeline(analysisCtx, aw, ah);
+    // Analyse exactly what is visible in the viewfinder, not the hidden
+    // sides cropped away by object-fit:cover.
+    analysisCtx.drawImage(video, rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, aw, ah);
+    const quad = runPipeline(analysisCtx, aw, ah, allowLineFallback);
     if (!quad) return null;
     const inv = 1 / scale;
-    return { corners: quad.corners.map((p) => ({ x: p.x * inv, y: p.y * inv })), score: quad.score };
+    return { corners: quad.corners.map((p) => ({ x: rect.sx + p.x * inv, y: rect.sy + p.y * inv })), score: quad.score };
   }
 
   function detectFromCanvas(sourceCanvas) {
@@ -70,7 +76,7 @@ const EdgeDetector = (() => {
     const ah = Math.max(1, Math.round(sh * scale));
     getAnalysisCanvas(aw, ah);
     analysisCtx.drawImage(sourceCanvas, 0, 0, aw, ah);
-    const quad = runPipeline(analysisCtx, aw, ah);
+    const quad = runPipeline(analysisCtx, aw, ah, true);
     if (!quad) return null;
     const inv = 1 / scale;
     return { corners: quad.corners.map((p) => ({ x: p.x * inv, y: p.y * inv })), score: quad.score };
@@ -78,7 +84,7 @@ const EdgeDetector = (() => {
 
   /* ---------------- core pipeline ---------------- */
 
-  function runPipeline(ctx, w, h) {
+  function runPipeline(ctx, w, h, allowLineFallback = true) {
     const { data } = ctx.getImageData(0, 0, w, h);
     const gray = toGray(data, w, h);
     const blurred = boxBlur3(gray, w, h);
@@ -105,10 +111,10 @@ const EdgeDetector = (() => {
     // line-based pass provides an independent fallback for those cases.
     // It finds four supported border lines and intersects them, so it does
     // not require the document silhouette to be sealed.
-    const lines = detectQuadFromLines(mag, w, h, mean + std * 0.45);
-    if (!best) return lines;
-    if (!lines) return best;
-    return lines.score > best.score * 1.08 ? lines : best;
+    // Hough is deliberately only a fallback. Running it for every preview
+    // frame was the main source of camera jank, even when the fast region
+    // detector had already found a valid document.
+    return best || (allowLineFallback ? detectQuadFromLines(mag, w, h, mean + std * 0.45) : null);
   }
 
   function detectQuadFromLines(mag, w, h, threshold) {
