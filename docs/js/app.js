@@ -363,6 +363,15 @@
   // Renders a page's base canvas through rotation + filter + adjustments,
   // then composites brush strokes, watermark and text/signature annotations
   // on top (in that order) at the output canvas's resolution.
+  // Some mobile browsers (iOS Safari in particular) fail or silently
+  // produce a blank/corrupt canvas above roughly 16.7M total pixels,
+  // regardless of aspect ratio — a dimension-only cap can still exceed
+  // that for a wide/landscape scan even when each side looks reasonable
+  // on its own. Clamping by area too is what lets the per-call maxDim be
+  // pushed high for real detail on typical portrait documents while still
+  // staying safe for any aspect ratio.
+  const SAFE_CANVAS_AREA = 15000000;
+
   function renderPage(page, maxDim = 1600) {
     let src = page.base;
     // rotation
@@ -379,10 +388,14 @@
       rctx.drawImage(src, -src.width / 2, -src.height / 2);
       src = rc;
     }
-    // downscale for performance if huge
+    // downscale for performance/safety if huge
     let scale = 1;
     if (Math.max(src.width, src.height) > maxDim) {
       scale = maxDim / Math.max(src.width, src.height);
+    }
+    const projectedArea = src.width * scale * (src.height * scale);
+    if (projectedArea > SAFE_CANVAS_AREA) {
+      scale *= Math.sqrt(SAFE_CANVAS_AREA / projectedArea);
     }
     const out = document.createElement("canvas");
     out.width = Math.round(src.width * scale);
@@ -1819,7 +1832,7 @@
     // multi-page render before any feedback can paint.
     const pages = [];
     for (let i = 0; i < State.currentPages.length; i++) {
-      pages.push(renderPage(State.currentPages[i], 3600));
+      pages.push(renderPage(State.currentPages[i], 4800));
       if (onProgress) onProgress(i + 1, State.currentPages.length);
       await new Promise((r) => requestAnimationFrame(r));
     }
