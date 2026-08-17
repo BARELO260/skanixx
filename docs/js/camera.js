@@ -45,7 +45,23 @@ const CameraController = (() => {
     if (track && "ImageCapture" in window) {
       try {
         const capture = new ImageCapture(track);
-        const blob = await capture.takePhoto();
+        // Explicitly ask for the sensor's maximum still-photo resolution —
+        // takePhoto() with no options often defaults to something lower
+        // than the true sensor max, not the actual best the hardware can do.
+        let photoSettings = undefined;
+        try {
+          const caps = await capture.getPhotoCapabilities();
+          if (caps && caps.imageWidth && caps.imageHeight) {
+            photoSettings = {
+              imageWidth: caps.imageWidth.max,
+              imageHeight: caps.imageHeight.max,
+            };
+          }
+        } catch (capErr) {
+          // getPhotoCapabilities isn't universally supported — fine to
+          // just fall through to takePhoto()'s own default in that case.
+        }
+        const blob = await capture.takePhoto(photoSettings).catch(() => capture.takePhoto());
         const bitmap = await createImageBitmap(blob);
         canvas.width = bitmap.width;
         canvas.height = bitmap.height;
