@@ -1025,14 +1025,63 @@
   /* ---------------------------------------------------------------
    * EDIT VIEW (filters / adjustments / transform)
    * --------------------------------------------------------------- */
-  let editRenderToken = 0;
-  function openEditView() {
-    Router.show("view-edit");
-    const p = State.activePage;
+  // Keeps edits reversible without copying the original photo for each step.
+  // The base canvas is immutable during normal editing; snapshots therefore
+  // contain only lightweight page metadata and remain safe on mobile.
+  const EditHistory = (() => {
+    const LIMIT = 40;
+    let past = [], future = [], current = null;
+    const snapshot = (page) => JSON.stringify({
+      rotation: page.rotation, filter: page.filter, brightness: page.brightness,
+      contrast: page.contrast, saturation: page.saturation,
+      annotations: page.annotations || [], strokes: page.strokes || [], watermark: page.watermark || null,
+    });
+    function refreshButtons() {
+      $("#editUndoBtn").disabled = past.length === 0;
+      $("#editRedoBtn").disabled = future.length === 0;
+    }
+    function reset(page) { past = []; future = []; current = page ? snapshot(page) : null; refreshButtons(); }
+    function record(page) {
+      if (!page) return;
+      const next = snapshot(page);
+      if (current === null) { current = next; refreshButtons(); return; }
+      if (next === current) return;
+      past.push(current); if (past.length > LIMIT) past.shift();
+      current = next; future = []; refreshButtons();
+    }
+    function restore(page, value) {
+      const data = JSON.parse(value);
+      Object.assign(page, data);
+      current = value;
+      syncEditControls(page);
+      renderEditCanvas();
+      scheduleAutosave();
+      refreshButtons();
+    }
+    function undo(page) {
+      if (!page || !past.length) return;
+      future.push(current); restore(page, past.pop());
+    }
+    function redo(page) {
+      if (!page || !future.length) return;
+      past.push(current); restore(page, future.pop());
+    }
+    return { reset, record, undo, redo };
+  })();
+
+  function syncEditControls(p) {
     $$(".filter-chip").forEach((b) => b.classList.toggle("active", b.dataset.filter === p.filter));
     $("#rangeBrightness").value = p.brightness; $("#outBrightness").textContent = p.brightness;
     $("#rangeContrast").value = p.contrast; $("#outContrast").textContent = p.contrast;
     $("#rangeSaturation").value = p.saturation; $("#outSaturation").textContent = p.saturation;
+  }
+
+  let editRenderToken = 0;
+  function openEditView() {
+    Router.show("view-edit");
+    const p = State.activePage;
+    syncEditControls(p);
+    EditHistory.reset(p);
     // reset to the Filtros tab each time a page is opened
     $$(".edit-tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === "filters"));
     $$(".edit-panel").forEach((panel) => panel.classList.toggle("hidden", panel.id !== "panel-filters"));
@@ -1135,6 +1184,7 @@
     btn.classList.add("active");
     State.activePage.filter = btn.dataset.filter;
     debouncedRender();
+    scheduleAutosave();
   });
 
   function clampRange(v, lo, hi) { return Math.max(lo, Math.min(hi, v)); }
@@ -1198,6 +1248,7 @@
       State.activePage[prop] = Number(range.value);
       debouncedRender();
     });
+    range.addEventListener("change", scheduleAutosave);
   }
   bindSlider("#rangeBrightness", "#outBrightness", "brightness");
   bindSlider("#rangeContrast", "#outContrast", "contrast");
@@ -1208,15 +1259,30 @@
     $("#rangeContrast").value = 0; $("#outContrast").textContent = "0";
     $("#rangeSaturation").value = 0; $("#outSaturation").textContent = "0";
     renderEditCanvas();
+    scheduleAutosave();
   });
 
   $("#rotateLeftBtn").addEventListener("click", () => {
     State.activePage.rotation = (State.activePage.rotation + 270) % 360;
     renderEditCanvas();
+    scheduleAutosave();
   });
   $("#rotateRightBtn").addEventListener("click", () => {
     State.activePage.rotation = (State.activePage.rotation + 90) % 360;
     renderEditCanvas();
+    scheduleAutosave();
+  });
+  $("#editUndoBtn").addEventListener("click", () => EditHistory.undo(State.activePage));
+  $("#editRedoBtn").addEventListener("click", () => EditHistory.redo(State.activePage));
+  window.addEventListener("keydown", (event) => {
+    const target = event.target;
+    if (!(event.ctrlKey || event.metaKey) || event.altKey || target.matches("input, textarea, [contenteditable=true]")) return;
+    if (event.key.toLowerCase() === "z") {
+      event.preventDefault();
+      event.shiftKey ? EditHistory.redo(State.activePage) : EditHistory.undo(State.activePage);
+    } else if (event.key.toLowerCase() === "y") {
+      event.preventDefault(); EditHistory.redo(State.activePage);
+    }
   });
   $("#backToCropBtn").addEventListener("click", async () => {
     await openCropView(State.activePage.base);
@@ -1509,6 +1575,8 @@
     const Sig = { canvas: null, ctx: null, drawing: false };
     function openSignatureModal() {
       $("#signatureModal").classList.remove("hidden");
+      $("#signatureUseSavedBtn").classList.toggle("hidden", !localStorage.getItem("skanix-saved-signature"));
+      $("#signatureRemember").checked = false;
       Sig.canvas = $("#signatureCanvas");
       Sig.ctx = Sig.canvas.getContext("2d");
       const rect = Sig.canvas.getBoundingClientRect();
@@ -1541,10 +1609,7 @@
       Sig.ctx.clearRect(0, 0, rect.width, rect.height);
     });
     $("#signatureCancelBtn").addEventListener("click", () => $("#signatureModal").classList.add("hidden"));
-    $("#signatureInsertBtn").addEventListener("click", async () => {
-      const blank = await isCanvasBlank(Sig.canvas);
-      if (blank) { toast("Dibuja tu firma antes de insertarla", "error"); return; }
-      const dataUrl = Sig.canvas.toDataURL("image/png");
+    async function insertSignature(dataUrl) {
       await preloadAnnotationImage(dataUrl);
       const a = {
         id: uid(), type: "signature", xFrac: 0.28, yFrac: 0.58, wFrac: 0.36,
@@ -1555,6 +1620,20 @@
       $("#signatureModal").classList.add("hidden");
       renderEditCanvas().then(drawSelection);
       scheduleAutosave();
+    }
+    $("#signatureInsertBtn").addEventListener("click", async () => {
+      const blank = await isCanvasBlank(Sig.canvas);
+      if (blank) { toast("Dibuja tu firma antes de insertarla", "error"); return; }
+      const dataUrl = Sig.canvas.toDataURL("image/png");
+      if ($("#signatureRemember").checked) {
+        try { localStorage.setItem("skanix-saved-signature", dataUrl); }
+        catch (err) { toast("La firma se insertó, pero no se pudo guardar para reutilizarla", "error"); }
+      }
+      await insertSignature(dataUrl);
+    });
+    $("#signatureUseSavedBtn").addEventListener("click", async () => {
+      const dataUrl = localStorage.getItem("skanix-saved-signature");
+      if (dataUrl) await insertSignature(dataUrl);
     });
     function isCanvasBlank(canvas) {
       const ctx = canvas.getContext("2d");
@@ -1959,12 +2038,17 @@
   }
 
   let autosaveTimer = null;
+  let autosaveErrorShown = false;
   function scheduleAutosave() {
+    // Record before checking persisted-document state: history must work
+    // while composing a brand-new scan as well as after reopening one.
+    EditHistory.record(State.activePage);
     if (!State.editingDocId) return; // only autosave documents already in history
     clearTimeout(autosaveTimer);
     autosaveTimer = setTimeout(async () => {
       try {
         await persistCurrentDocument();
+        autosaveErrorShown = false;
         const hint = $("#reviewSavedHint");
         if (hint) {
           hint.textContent = "Guardado ✓";
@@ -1977,6 +2061,11 @@
         // rebuild it here too on every autosave tick while it's off-screen.
       } catch (err) {
         console.error("autosave failed", err);
+        if (!autosaveErrorShown) {
+          autosaveErrorShown = true;
+          const quota = err?.name === "QuotaExceededError" || /quota|space|storage/i.test(err?.message || "");
+          toast(quota ? "No hay espacio suficiente para guardar el documento. Libera espacio e inténtalo de nuevo." : "No se pudo guardar el cambio. Tus ediciones siguen abiertas.", "error");
+        }
       }
     }, 1200);
   }
