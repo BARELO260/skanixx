@@ -333,6 +333,10 @@
 
       <div class="edit-footer">
         <button id="editBackBtn" class="btn-secondary">Atrás</button>
+        <div class="edit-history-actions" aria-label="Historial de edición">
+          <button id="editUndoBtn" class="btn-chip btn-ghost" disabled aria-label="Deshacer último cambio">Deshacer</button>
+          <button id="editRedoBtn" class="btn-chip btn-ghost" disabled aria-label="Rehacer último cambio">Rehacer</button>
+        </div>
         <button id="addPageBtn" class="btn-primary">Añadir página ✓</button>
       </div>
     </section>
@@ -416,9 +420,11 @@
       <div class="dialog signature-dialog">
         <p>Dibuja tu firma</p>
         <canvas id="signatureCanvas" class="signature-canvas"></canvas>
+        <label class="signature-remember"><input id="signatureRemember" type="checkbox" /> Guardar para reutilizar en este dispositivo</label>
         <div class="dialog-actions">
           <button id="signatureClearBtn" class="btn-secondary">Borrar</button>
           <button id="signatureCancelBtn" class="btn-secondary">Cancelar</button>
+          <button id="signatureUseSavedBtn" class="btn-secondary hidden">Usar guardada</button>
           <button id="signatureInsertBtn" class="btn-primary">Insertar firma</button>
         </div>
       </div>
