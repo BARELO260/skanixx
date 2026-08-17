@@ -11,7 +11,9 @@
  * icons use cache-first, since freshness barely matters there and instant
  * offline loading does.
  */
-const CACHE_NAME = "skanix-shell-v5";
+// Bumped with the edge-detection runtime so installed/offline clients do
+// not retain a previous camera pipeline after an update.
+const CACHE_NAME = "skanix-shell-v6";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
