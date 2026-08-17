@@ -494,6 +494,11 @@ input[type="range"]::-moz-range-thumb{
 .transform-row{ display:flex; gap:8px; flex-wrap:wrap; }
 
 .edit-footer{ display:flex; gap:10px; margin-top:16px; }
+.edit-history-actions{ display:flex; gap:6px; margin-left:auto; }
+.edit-history-actions .btn-chip{ padding:8px 10px; font-size:12px; }
+@media (max-width:420px){ .edit-footer{ flex-wrap:wrap; } .edit-history-actions{ order:3; width:100%; justify-content:center; } }
+.signature-remember{ display:flex; align-items:center; gap:7px; margin:10px 0 2px; color:var(--text-muted); font-size:12px; }
+.signature-remember input{ accent-color:var(--purple); }
 
 /* ---------- Buttons ---------- */
 .btn-primary{
