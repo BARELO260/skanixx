@@ -98,7 +98,98 @@ const EdgeDetector = (() => {
     let best = tryThreshold(mag, w, h, mean, std, 1.3);
     if (!best) best = tryThreshold(mag, w, h, mean, std, 0.9);
     if (!best) best = tryThreshold(mag, w, h, mean, std, 0.55);
+
+    // A document border is often *not* a closed contour: one pale edge can
+    // disappear against the table, or a shadow can split it. The region
+    // detector above deliberately remains as the fast path, while this
+    // line-based pass provides an independent fallback for those cases.
+    // It finds four supported border lines and intersects them, so it does
+    // not require the document silhouette to be sealed.
+    const lines = detectQuadFromLines(mag, w, h, mean + std * 0.45);
+    if (!best) return lines;
+    if (!lines) return best;
+    return lines.score > best.score * 1.08 ? lines : best;
+  }
+
+  function detectQuadFromLines(mag, w, h, threshold) {
+    const angleStep = 5;
+    const angles = [];
+    for (let deg = 0; deg < 180; deg += angleStep) {
+      const rad = deg * Math.PI / 180;
+      angles.push({ deg, c: Math.cos(rad), s: Math.sin(rad) });
+    }
+    const maxRho = Math.ceil(Math.hypot(w, h));
+    const bins = maxRho * 2 + 1;
+    const accumulator = new Uint16Array(angles.length * bins);
+    let samples = 0;
+    // A bounded sampling rate keeps the fallback predictable on mid-range
+    // phones.  At the analysis resolution this is under 1,900 votes/frame.
+    for (let y = 2; y < h - 2; y += 2) {
+      for (let x = 2; x < w - 2; x += 2) {
+        if (mag[y * w + x] < threshold) continue;
+        samples++;
+        for (let a = 0; a < angles.length; a++) {
+          const line = angles[a];
+          const rho = Math.round(x * line.c + y * line.s) + maxRho;
+          accumulator[a * bins + rho]++;
+        }
+      }
+    }
+    if (samples < Math.max(35, w * h * 0.003)) return null;
+
+    const peaks = [];
+    for (let a = 0; a < angles.length; a++) {
+      for (let r = 1; r < bins - 1; r++) {
+        const votes = accumulator[a * bins + r];
+        if (votes < 9 || votes < accumulator[a * bins + r - 1] || votes < accumulator[a * bins + r + 1]) continue;
+        peaks.push({ ...angles[a], rho: r - maxRho, votes });
+      }
+    }
+    peaks.sort((a, b) => b.votes - a.votes);
+    const lines = [];
+    for (const peak of peaks) {
+      // Keep only distinct line candidates. Without non-maximum suppression
+      // one strong paper edge occupies all useful slots in the list.
+      if (lines.some((p) => angleDistance(p.deg, peak.deg) < 7 && Math.abs(p.rho - peak.rho) < 7)) continue;
+      lines.push(peak);
+      if (lines.length === 22) break;
+    }
+
+    let best = null;
+    const minGap = Math.min(w, h) * 0.16;
+    for (let i = 0; i < lines.length; i++) for (let j = i + 1; j < lines.length; j++) {
+      const a = lines[i], b = lines[j];
+      if (angleDistance(a.deg, b.deg) > 18 || Math.abs(a.rho - b.rho) < minGap) continue;
+      for (let k = 0; k < lines.length; k++) for (let l = k + 1; l < lines.length; l++) {
+        if (i === k || i === l || j === k || j === l) continue;
+        const c = lines[k], d = lines[l];
+        if (angleDistance(c.deg, d.deg) > 18 || Math.abs(c.rho - d.rho) < minGap) continue;
+        const crossAngle = angleDistance(a.deg, c.deg);
+        if (Math.abs(crossAngle - 90) > 23) continue;
+        const raw = [intersectLines(a, c), intersectLines(a, d), intersectLines(b, d), intersectLines(b, c)];
+        if (raw.some((p) => !p)) continue;
+        const quad = orderCorners(raw);
+        if (!isRoughlyConvexQuad(quad)) continue;
+        const areaFrac = polygonArea(quad) / (w * h);
+        if (areaFrac < 0.07 || areaFrac > 0.98) continue;
+        if (quad.some((p) => p.x < -w * 0.12 || p.x > w * 1.12 || p.y < -h * 0.12 || p.y > h * 1.12)) continue;
+        const support = [a, b, c, d].reduce((sum, line) => sum + line.votes, 0) / (4 * Math.max(1, samples / Math.max(w, h)));
+        const score = areaFrac * quadRectangularity(quad) * Math.min(1, support / 2.3);
+        if (!best || score > best.score) best = { corners: quad, score };
+      }
+    }
     return best;
+  }
+
+  function angleDistance(a, b) {
+    const d = Math.abs(a - b) % 180;
+    return Math.min(d, 180 - d);
+  }
+
+  function intersectLines(a, b) {
+    const det = a.c * b.s - b.c * a.s;
+    if (Math.abs(det) < 0.05) return null;
+    return { x: (a.rho * b.s - b.rho * a.s) / det, y: (a.c * b.rho - b.c * a.rho) / det };
   }
 
   function tryThreshold(mag, w, h, mean, std, kFactor) {
