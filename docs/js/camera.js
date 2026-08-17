@@ -1,90 +1,61 @@
 /**
- * camera.js — thin wrapper around getUserMedia for live capture,
- * including front/back camera switching and still-frame grabbing.
+ * CameraController uses one stream for preview and capture. ImageCapture's
+ * still-photo path is deliberately avoided because it can use a different
+ * camera mode/FOV from the visible preview on mobile devices.
  */
 const CameraController = (() => {
-  let stream = null;
-  let facingMode = "environment";
-  let videoEl = null;
+  let stream = null, facingMode = "environment", videoEl = null, lastGeometry = null;
 
   async function start(video) {
     videoEl = video;
     await stop();
-    const constraints = {
-      audio: false,
-      video: {
-        facingMode: { ideal: facingMode },
-        width: { ideal: 4096 },
-        height: { ideal: 2160 },
-      },
-    };
-    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
+      facingMode: { ideal: facingMode }, width: { ideal: 2560 }, height: { ideal: 1920 },
+      aspectRatio: { ideal: 4 / 3 }, frameRate: { ideal: 30, max: 30 },
+    }});
     video.srcObject = stream;
-    await video.play().catch(() => {});
+    await new Promise((resolve) => {
+      if (video.readyState >= HTMLMediaElement.HAVE_METADATA) return resolve();
+      video.addEventListener("loadedmetadata", resolve, { once: true });
+    });
+    await video.play();
   }
 
   async function stop() {
-    if (stream) {
-      stream.getTracks().forEach((t) => t.stop());
-      stream = null;
-    }
+    if (stream) stream.getTracks().forEach((t) => t.stop());
+    stream = null; lastGeometry = null;
   }
-
   async function switchCamera() {
     facingMode = facingMode === "environment" ? "user" : "environment";
     if (videoEl) await start(videoEl);
   }
 
-  // Prefers ImageCapture.takePhoto(), which asks the camera sensor for a
-  // full-resolution still — the same path native camera apps use — instead
-  // of just grabbing whatever frame the (much lower-res) live preview
-  // stream happens to be showing. Falls back to a video-frame grab on
-  // browsers without ImageCapture support (e.g. iOS Safari).
-  async function captureFrame(canvas) {
-    const track = stream && stream.getVideoTracks()[0];
-    if (track && "ImageCapture" in window) {
-      try {
-        const capture = new ImageCapture(track);
-        // Explicitly ask for the sensor's maximum still-photo resolution —
-        // takePhoto() with no options often defaults to something lower
-        // than the true sensor max, not the actual best the hardware can do.
-        let photoSettings = undefined;
-        try {
-          const caps = await capture.getPhotoCapabilities();
-          if (caps && caps.imageWidth && caps.imageHeight) {
-            photoSettings = {
-              imageWidth: caps.imageWidth.max,
-              imageHeight: caps.imageHeight.max,
-            };
-          }
-        } catch (capErr) {
-          // getPhotoCapabilities isn't universally supported — fine to
-          // just fall through to takePhoto()'s own default in that case.
-        }
-        const blob = await capture.takePhoto(photoSettings).catch(() => capture.takePhoto());
-        const bitmap = await createImageBitmap(blob);
-        canvas.width = bitmap.width;
-        canvas.height = bitmap.height;
-        canvas.getContext("2d").drawImage(bitmap, 0, 0);
-        if (bitmap.close) bitmap.close();
-        return canvas;
-      } catch (err) {
-        // Some devices advertise ImageCapture but reject takePhoto() for
-        // the active track — fall through to the video-frame grab below.
-      }
-    }
-    const video = videoEl;
-    const w = video.videoWidth, h = video.videoHeight;
-    canvas.width = w;
-    canvas.height = h;
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(video, 0, 0, w, h);
+  // Exact native-video rectangle rendered by CSS object-fit:cover.
+  function getPreviewSourceRect(viewportAspect) {
+    const vw = videoEl?.videoWidth || 0, vh = videoEl?.videoHeight || 0;
+    if (!vw || !vh || !viewportAspect) return null;
+    const videoAspect = vw / vh;
+    let sx = 0, sy = 0, sw = vw, sh = vh;
+    if (videoAspect > viewportAspect) { sw = vh * viewportAspect; sx = (vw - sw) / 2; }
+    else if (videoAspect < viewportAspect) { sh = vw / viewportAspect; sy = (vh - sh) / 2; }
+    return { sx, sy, sw, sh, vw, vh };
+  }
+
+  // Captures precisely the portion of the stream shown to the user, at its
+  // native stream density. No post-capture aspect-only crop is required.
+  async function captureFrame(canvas, viewportAspect) {
+    const rect = getPreviewSourceRect(viewportAspect);
+    if (!rect) throw new Error("La vista previa aún no está lista");
+    canvas.width = Math.round(rect.sw); canvas.height = Math.round(rect.sh);
+    canvas.getContext("2d", { alpha: false }).drawImage(videoEl, rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, canvas.width, canvas.height);
+    lastGeometry = { ...rect, outW: canvas.width, outH: canvas.height };
     return canvas;
   }
-
-  function isActive() {
-    return !!stream;
+  function mapVideoPointToCapture(point, geometry = lastGeometry) {
+    if (!geometry) return null;
+    return { x: (point.x - geometry.sx) * geometry.outW / geometry.sw, y: (point.y - geometry.sy) * geometry.outH / geometry.sh };
   }
-
-  return { start, stop, switchCamera, captureFrame, isActive };
+  function isActive() { return !!stream; }
+  function getSettings() { return stream?.getVideoTracks()[0]?.getSettings?.() || null; }
+  return { start, stop, switchCamera, captureFrame, getPreviewSourceRect, mapVideoPointToCapture, isActive, getSettings };
 })();
