@@ -218,7 +218,8 @@
           const rect = stage && CameraController.getPreviewSourceRect(stage.clientWidth / stage.clientHeight);
           // The line-based fallback is intentionally sampled less often:
           // it helps pale/broken borders without making a miss freeze video.
-          const result = rect && EdgeDetector.detectFromVideoFrame(videoEl, rect, { allowLineFallback: (++slowFallbackTick % 4) === 0 });
+          const candidate = rect && EdgeDetector.detectFromVideoFrame(videoEl, rect, { allowLineFallback: (++slowFallbackTick % 4) === 0 });
+          const result = candidate && candidate.score >= 0.10 ? candidate : null;
           if (result) {
             missStreak = 0;
             // A result existing is not enough to call it stable: noisy
@@ -722,7 +723,9 @@
     // Re-detect on the captured pixels, but retain the live result as a
     // direct geometry-preserving fallback if the still analysis is unsure.
     const freshQuad = EdgeDetector.detectFromCanvas(canvas);
-    if (freshQuad) {
+    // A weak candidate is worse than no candidate: it can send the
+    // perspective warp outside the image and look like a black/empty scan.
+    if (freshQuad && freshQuad.score >= 0.10) {
       State.pendingDetectedCorners = freshQuad.corners;
     } else if (liveQuad) {
       State.pendingDetectedCorners = liveQuad.map((p) => CameraController.mapVideoPointToCapture(p)).filter(Boolean);
