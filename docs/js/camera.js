@@ -98,13 +98,31 @@ const CameraController = (() => {
     });
   }
 
+  // Some mobile browsers (iOS Safari in particular) fail or produce a
+  // blank/corrupt canvas above roughly 16.7M total pixels. Now that the
+  // camera is allowed to run at its real sensor resolution instead of a
+  // fixed 2560x1920 cap, a modern phone can hand us a stream noticeably
+  // above that — so the capture canvas itself needs the same safety clamp
+  // app.js already applies to rendered/exported pages, or the resolution
+  // fix could turn into "sometimes captures a blank photo" on those
+  // devices. This only engages near/above that ceiling; on the vast
+  // majority of phones it's a no-op.
+  const SAFE_CAPTURE_AREA = 15000000;
+
   // Captures precisely the portion of the stream shown to the user, at its
-  // native stream density. No post-capture aspect-only crop is required.
+  // native stream density (clamped by SAFE_CAPTURE_AREA above).
   async function captureFrame(canvas, viewportAspect) {
     await waitForLiveFrame();
     const rect = getPreviewSourceRect(viewportAspect);
     if (!rect) throw new Error("La vista previa aún no está lista");
-    canvas.width = Math.round(rect.sw); canvas.height = Math.round(rect.sh);
+    let outW = Math.round(rect.sw), outH = Math.round(rect.sh);
+    const area = outW * outH;
+    if (area > SAFE_CAPTURE_AREA) {
+      const clamp = Math.sqrt(SAFE_CAPTURE_AREA / area);
+      outW = Math.round(outW * clamp);
+      outH = Math.round(outH * clamp);
+    }
+    canvas.width = outW; canvas.height = outH;
     const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
     ctx.drawImage(videoEl, rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, canvas.width, canvas.height);
     lastGeometry = { ...rect, outW: canvas.width, outH: canvas.height };
