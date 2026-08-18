@@ -85,6 +85,44 @@
     });
   }
 
+  // Some WebViews (notably the Android system WebView Capacitor wraps this
+  // app in) can fail to decode very large base64 `data:` URLs — neither
+  // onload nor onerror ever fires, so an <img> loaded from
+  // canvas.toDataURL() can hang forever. A full-resolution photo easily
+  // produces a multi-megabyte data URL (more so since capture now uses the
+  // sensor's real resolution instead of a 2560x1920 cap), so this isn't a
+  // rare corner case here — it was very likely the cause of "no matter how
+  // many times I press the shutter, it won't take the photo": once this
+  // hung, captureInFlight below stayed stuck `true` for the rest of the
+  // session, silently swallowing every further tap.
+  //
+  // toBlob() + an object URL sidesteps the giant base64 string entirely
+  // (this is also how the file-upload path already loads images), and a
+  // hard timeout guarantees this promise always settles even if a WebView
+  // still misbehaves in some other way.
+  function loadImageFromCanvas(canvas, { mime = "image/jpeg", quality = 0.96, timeoutMs = 8000 } = {}) {
+    return new Promise((resolve, reject) => {
+      let settled = false;
+      const finish = (fn, arg) => { if (!settled) { settled = true; fn(arg); } };
+      const timer = setTimeout(
+        () => finish(reject, new Error("Tiempo de espera agotado al procesar la foto")),
+        timeoutMs
+      );
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          clearTimeout(timer);
+          finish(reject, new Error("No se pudo generar la imagen capturada"));
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => { clearTimeout(timer); URL.revokeObjectURL(url); finish(resolve, img); };
+        img.onerror = (err) => { clearTimeout(timer); URL.revokeObjectURL(url); finish(reject, err); };
+        img.src = url;
+      }, mime, quality);
+    });
+  }
+
   function canvasFromImage(img) {
     const c = document.createElement("canvas");
     c.width = img.naturalWidth || img.width;
@@ -722,6 +760,7 @@
   });
 
   let captureInFlight = false;
+  let captureWatchdog = null;
   async function capturePhoto() {
     if (captureInFlight) return; // one capture at a time; not an error, just a debounce
     if (!CameraController.isActive()) {
@@ -734,6 +773,19 @@
       return;
     }
     captureInFlight = true;
+    // Belt-and-suspenders: no matter what unexpected thing goes wrong below
+    // (a frozen video track, a stalled encode, a WebView quirk we haven't
+    // hit yet), the shutter must never stay permanently unresponsive for
+    // the rest of the session. If a capture hasn't finished within 10s,
+    // force the flag back open so the very next tap can try again instead
+    // of silently doing nothing forever.
+    captureWatchdog = setTimeout(() => {
+      if (captureInFlight) {
+        console.warn("capturePhoto: watchdog fired, forcing capture state to reset");
+        captureInFlight = false;
+        toast("La captura tardó demasiado. Inténtalo de nuevo.", "error");
+      }
+    }, 10000);
     try {
     SoundFX.shutter();
     const flash = $("#flashOverlay");
@@ -760,7 +812,7 @@
     } else {
       State.pendingDetectedCorners = null;
     }
-    const img = await loadImage(canvas.toDataURL("image/jpeg", 0.96));
+    const img = await loadImageFromCanvas(canvas, { mime: "image/jpeg", quality: 0.96 });
     State.uploadQueue.push(img);
     // keep camera open for rapid multi-page capture; queue processes in background
     processNextInQueue();
@@ -768,6 +820,8 @@
       console.error("capture failed", err);
       toast("No se pudo capturar la imagen. Inténtalo de nuevo.", "error");
     } finally {
+      clearTimeout(captureWatchdog);
+      captureWatchdog = null;
       captureInFlight = false;
     }
   }
