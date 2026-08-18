@@ -6,13 +6,25 @@
 const CameraController = (() => {
   let stream = null, facingMode = "environment", videoEl = null, lastGeometry = null;
 
+  // Upper bound only — this is *not* what we ask for by default. It exists
+  // so applyConstraints() below never requests something absurd (e.g. a
+  // buggy driver reporting an 8K "max"), while still letting real sensors
+  // (8/12/48MP) be used instead of being capped at a fixed mid-range value.
+  const HARD_MAX_DIM = 6000;
+
   async function start(video) {
     videoEl = video;
     await stop();
+    // Ask for a generous "ideal" so the browser doesn't default to a low
+    // preview resolution, then immediately try to push the track to the
+    // camera's actual maximum via getCapabilities()/applyConstraints(). A
+    // fixed ideal like 2560x1920 silently throws away real sensor
+    // resolution on any phone whose camera can do better (most of them).
     stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
-      facingMode: { ideal: facingMode }, width: { ideal: 2560 }, height: { ideal: 1920 },
+      facingMode: { ideal: facingMode }, width: { ideal: 4096 }, height: { ideal: 3072 },
       aspectRatio: { ideal: 4 / 3 }, frameRate: { ideal: 30, max: 30 },
     }});
+    await maximizeTrackResolution(stream.getVideoTracks()[0]);
     video.srcObject = stream;
     await new Promise((resolve) => {
       if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) return resolve();
@@ -20,6 +32,28 @@ const CameraController = (() => {
     });
     await video.play();
     await waitForLiveFrame();
+  }
+
+  // Re-requests the track at the highest resolution the hardware actually
+  // reports via getCapabilities(). This is best-effort: some browsers
+  // (older WebViews, some desktop UAs) don't implement getCapabilities on
+  // video tracks, in which case we just keep whatever getUserMedia gave us.
+  async function maximizeTrackResolution(track) {
+    if (!track || typeof track.getCapabilities !== "function") return;
+    try {
+      const caps = track.getCapabilities();
+      const settings = track.getSettings ? track.getSettings() : {};
+      const maxW = caps.width && caps.width.max ? Math.min(caps.width.max, HARD_MAX_DIM) : null;
+      const maxH = caps.height && caps.height.max ? Math.min(caps.height.max, HARD_MAX_DIM) : null;
+      if (!maxW || !maxH) return;
+      const alreadyAtMax = (settings.width || 0) >= maxW && (settings.height || 0) >= maxH;
+      if (alreadyAtMax) return;
+      await track.applyConstraints({
+        width: { ideal: maxW }, height: { ideal: maxH },
+      });
+    } catch {
+      // Camera stays at whatever resolution getUserMedia already picked.
+    }
   }
 
   async function stop() {
