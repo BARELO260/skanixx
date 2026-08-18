@@ -36,6 +36,11 @@ const EdgeDetector = (() => {
   // that visibly affects a 30fps camera preview.
   const ANALYSIS_WIDTH = 224;
   const DILATE_RADIUS = 2;
+  // Area fraction at which size confidence saturates to 1.0 (see usage
+  // below) — a document covering this much of the frame or more is scored
+  // purely on shape/position, not made to look "more confident" just for
+  // being bigger.
+  const SIZE_CONFIDENCE_FULL = 0.22;
   let analysisCanvas = null;
   let analysisCtx = null;
 
@@ -180,7 +185,8 @@ const EdgeDetector = (() => {
         if (areaFrac < 0.07 || areaFrac > 0.98) continue;
         if (quad.some((p) => p.x < -w * 0.12 || p.x > w * 1.12 || p.y < -h * 0.12 || p.y > h * 1.12)) continue;
         const support = [a, b, c, d].reduce((sum, line) => sum + line.votes, 0) / (4 * Math.max(1, samples / Math.max(w, h)));
-        const score = areaFrac * quadRectangularity(quad) * Math.min(1, support / 2.3);
+        const sizeConfidence = Math.min(1, areaFrac / SIZE_CONFIDENCE_FULL);
+        const score = sizeConfidence * quadRectangularity(quad) * Math.min(1, support / 2.3);
         if (!best || score > best.score) best = { corners: quad, score };
       }
     }
@@ -247,7 +253,17 @@ const EdgeDetector = (() => {
       const centroidX = (ordered[0].x + ordered[1].x + ordered[2].x + ordered[3].x) / 4;
       const centroidY = (ordered[0].y + ordered[1].y + ordered[2].y + ordered[3].y) / 4;
       const centerScore = 1 - Math.min(1, Math.hypot(centroidX - cx0, centroidY - cy0) / maxDist);
-      const score = areaFrac * rectangularity * (0.55 + 0.45 * centerScore);
+      // Confidence from size saturates instead of scaling linearly with
+      // area: a document that only fills, say, 25% of the frame (very
+      // common — most people don't crowd the viewfinder edges) is just as
+      // "confidently a document" as one filling 90%, provided its shape is
+      // clean and centered. Scaling score by raw areaFrac used to punish
+      // correctly-detected small-in-frame documents down to near-zero
+      // scores, which then got thrown out by the caller's score >= 0.10
+      // gate — i.e. detection worked but got discarded. areaFrac is still
+      // used above as a hard filter for implausibly tiny/huge candidates.
+      const sizeConfidence = Math.min(1, areaFrac / SIZE_CONFIDENCE_FULL);
+      const score = sizeConfidence * rectangularity * (0.55 + 0.45 * centerScore);
       if (!best || score > best.score) best = { corners: ordered, score };
     }
     return best;
