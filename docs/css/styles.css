@@ -326,6 +326,9 @@ p{ margin:0; }
 .auto-toggle.is-off svg{ opacity:.35; }
 
 .shutter-btn.ready{ box-shadow: 0 0 0 4px rgba(74,222,128,.35); }
+.shutter-btn.is-warming-up{ opacity:.4; cursor:default; }
+.shutter-btn:disabled{ opacity:.4; cursor:default; }
+.shutter-btn:disabled:active{ transform:none; }
 .flash-overlay{ position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; }
 .flash-overlay.flashing{ animation: flash .32s ease; }
 @keyframes flash{ 0%{opacity:0;} 12%{opacity:.9;} 100%{opacity:0;} }
