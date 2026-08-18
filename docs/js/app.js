@@ -657,12 +657,25 @@
     Router.show("view-camera");
     $("#cameraErrorState")?.classList.add("hidden");
     $("#cameraVideo")?.classList.remove("hidden");
+    // The stream takes a moment (permission prompt, sensor warm-up) to
+    // actually deliver frames. Disabling the shutter until then turns what
+    // used to be a silent no-op tap into an obviously-disabled button, and
+    // stops taps queued during that window from being dropped unseen.
+    setShutterReady(false);
     try {
       await CameraController.start($("#cameraVideo"));
+      setShutterReady(true);
       EdgeLoop.start($("#cameraVideo"), capturePhoto, State.autoCaptureEnabled);
     } catch (err) {
       showCameraError(err);
     }
+  }
+
+  function setShutterReady(ready) {
+    const shutter = $("#shutterBtn");
+    if (!shutter) return;
+    shutter.disabled = !ready;
+    shutter.classList.toggle("is-warming-up", !ready);
   }
 
   function showCameraError(err) {
@@ -698,13 +711,28 @@
     Router.show("view-home");
   });
   $("#cameraSwitchBtn").addEventListener("click", async () => {
-    await CameraController.switchCamera();
-    EdgeLoop.start($("#cameraVideo"), capturePhoto, State.autoCaptureEnabled); // fresh stream -> restart detection cleanly
+    setShutterReady(false);
+    try {
+      await CameraController.switchCamera();
+      setShutterReady(true);
+      EdgeLoop.start($("#cameraVideo"), capturePhoto, State.autoCaptureEnabled); // fresh stream -> restart detection cleanly
+    } catch (err) {
+      showCameraError(err);
+    }
   });
 
   let captureInFlight = false;
   async function capturePhoto() {
-    if (!CameraController.isActive() || captureInFlight) return;
+    if (captureInFlight) return; // one capture at a time; not an error, just a debounce
+    if (!CameraController.isActive()) {
+      // Previously a silent no-op — a tap here (typically right after
+      // opening the camera or switching lenses, before the stream is live)
+      // just did nothing with no feedback at all. Now the shutter is
+      // disabled during that window (see setShutterReady), but keep this
+      // as a safety net in case a tap lands in the gap anyway.
+      toast("La cámara todavía se está preparando, un momento…", "error");
+      return;
+    }
     captureInFlight = true;
     try {
     SoundFX.shutter();
