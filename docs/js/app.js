@@ -1095,6 +1095,16 @@
     } else {
       State.activePage = newPage(warped);
     }
+    // The image is now handed off to the edit step (tracked separately via
+    // State.activePage/editingExistingIndex) — it's no longer "checked out
+    // of the upload queue" from processNextInQueue's point of view. This
+    // was previously never reset here (only on cropBackBtn/addPageBtn), so
+    // if the user cropped+confirmed one photo and then tried to upload or
+    // capture a *second* one before finishing the edit of the first,
+    // processNextInQueue's `if (queueBusy) return;` silently swallowed it —
+    // no error, no crop view, nothing. Same root cause for camera and file
+    // upload, since both funnel through processNextInQueue().
+    queueBusy = false;
     openEditView();
   });
 
