@@ -15,10 +15,11 @@ const CameraController = (() => {
     }});
     video.srcObject = stream;
     await new Promise((resolve) => {
-      if (video.readyState >= HTMLMediaElement.HAVE_METADATA) return resolve();
-      video.addEventListener("loadedmetadata", resolve, { once: true });
+      if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) return resolve();
+      video.addEventListener("loadeddata", resolve, { once: true });
     });
     await video.play();
+    await waitForLiveFrame();
   }
 
   async function stop() {
@@ -41,13 +42,37 @@ const CameraController = (() => {
     return { sx, sy, sw, sh, vw, vh };
   }
 
+  // Wait for a compositor-confirmed frame before drawing. `loadedmetadata`
+  // only guarantees dimensions; drawing at that point can produce a black
+  // canvas on Android WebView and some mobile Safari releases.
+  function waitForLiveFrame(timeoutMs = 900) {
+    if (!videoEl || videoEl.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      return Promise.reject(new Error("La cámara todavía no entregó una imagen"));
+    }
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = () => { if (!settled) { settled = true; resolve(); } };
+      const timeout = setTimeout(finish, timeoutMs);
+      const done = () => { clearTimeout(timeout); finish(); };
+      if (typeof videoEl.requestVideoFrameCallback === "function") {
+        videoEl.requestVideoFrameCallback(done);
+      } else {
+        // Two paint turns make the current video frame available on older
+        // engines without requestVideoFrameCallback.
+        requestAnimationFrame(() => requestAnimationFrame(done));
+      }
+    });
+  }
+
   // Captures precisely the portion of the stream shown to the user, at its
   // native stream density. No post-capture aspect-only crop is required.
   async function captureFrame(canvas, viewportAspect) {
+    await waitForLiveFrame();
     const rect = getPreviewSourceRect(viewportAspect);
     if (!rect) throw new Error("La vista previa aún no está lista");
     canvas.width = Math.round(rect.sw); canvas.height = Math.round(rect.sh);
-    canvas.getContext("2d", { alpha: false }).drawImage(videoEl, rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, canvas.width, canvas.height);
+    const ctx = canvas.getContext("2d", { alpha: false, desynchronized: true });
+    ctx.drawImage(videoEl, rect.sx, rect.sy, rect.sw, rect.sh, 0, 0, canvas.width, canvas.height);
     lastGeometry = { ...rect, outW: canvas.width, outH: canvas.height };
     return canvas;
   }
