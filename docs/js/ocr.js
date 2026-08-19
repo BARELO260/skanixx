@@ -85,11 +85,48 @@ const OCR = (() => {
 
   /**
    * translate(text, targetLang, sourceLang) -> translated string
-   * Uses the free MyMemory API (no key required). Best-effort: chunks long
-   * text to stay under the API's per-request length limit and joins results.
-   * Requires network — throws if offline, caller should surface that.
+   *
+   * Tries Google's public translation endpoint first (same one used by
+   * countless browser extensions client-side, no key required) and falls
+   * back to the MyMemory API if that fails (offline-unfriendly proxy,
+   * network error, etc.).
+   *
+   * Why not just MyMemory alone: MyMemory is a *translation-memory* API —
+   * for short or generic input it can return an unrelated sentence pulled
+   * from its database that happens to share a phrase with the query,
+   * rather than an actual translation of what was sent. That's the most
+   * likely explanation for "translated text that has nothing to do with
+   * the original". Google's engine translates the given text directly
+   * instead of matching it against a memory bank, so it doesn't have this
+   * failure mode.
    */
   async function translate(text, targetLang = "en", sourceLang = "auto") {
+    try {
+      return await translateViaGoogle(text, targetLang, sourceLang);
+    } catch (err) {
+      return await translateViaMyMemory(text, targetLang, sourceLang);
+    }
+  }
+
+  async function translateViaGoogle(text, targetLang, sourceLang) {
+    // ~1800 chars keeps well under the endpoint's practical GET length
+    // limit while still preserving much more surrounding context per
+    // request than MyMemory's chunking did (better translations tend to
+    // come from more context, not less).
+    const chunks = chunkText(text, 1800);
+    const results = [];
+    for (const chunk of chunks) {
+      const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=${encodeURIComponent(sourceLang)}&tl=${encodeURIComponent(targetLang)}&dt=t&q=${encodeURIComponent(chunk)}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Servicio de traducción no disponible");
+      const json = await res.json();
+      const segments = Array.isArray(json) && Array.isArray(json[0]) ? json[0] : [];
+      results.push(segments.map((seg) => seg[0] || "").join(""));
+    }
+    return results.join(" ");
+  }
+
+  async function translateViaMyMemory(text, targetLang, sourceLang) {
     const chunks = chunkText(text, 480);
     const results = [];
     for (const chunk of chunks) {
