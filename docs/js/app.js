@@ -7,6 +7,12 @@
 (() => {
   "use strict";
 
+  // Must run before anything else below touches the DOM: applies the
+  // saved/detected UI language to every element carrying a data-i18n*
+  // attribute (see js/i18n.js). Everything else in this file only reads
+  // ids/classes, so translating first doesn't affect any wiring below.
+  I18n.init();
+
   /* ---------------------------------------------------------------
    * Small DOM helpers
    * --------------------------------------------------------------- */
@@ -357,8 +363,8 @@
       stage.classList.toggle("edge-locked", state === "locked");
       stage.classList.toggle("edge-searching", state === "searching");
       if (shutter) shutter.classList.toggle("ready", state === "locked");
-      if (hint) hint.textContent = state === "manual" ? "Modo manual · toca para capturar" : state === "locked" ? "Documento detectado · toca para capturar" : "Buscando el documento…";
-      if (badgeText) badgeText.textContent = state === "locked" ? "Listo" : "Buscando…";
+      if (hint) hint.textContent = state === "manual" ? I18n.t("camera.hintManual") : state === "locked" ? I18n.t("camera.hintLocked") : I18n.t("camera.hintSearching");
+      if (badgeText) badgeText.textContent = state === "locked" ? I18n.t("camera.locked") : I18n.t("camera.searching");
     }
 
     function currentQuad() {
@@ -718,13 +724,13 @@
 
   function showCameraError(err) {
     const name = err && err.name;
-    let message = "No se pudo acceder a la cámara.";
+    let message = I18n.t("camera.errorDefault");
     if (name === "NotAllowedError" || name === "PermissionDeniedError") {
-      message = "Permiso de cámara denegado. Actívalo en los ajustes de tu navegador o del sistema para poder escanear.";
+      message = I18n.t("camera.errorPermissionDenied");
     } else if (name === "NotFoundError" || name === "OverconstrainedError") {
-      message = "No se encontró ninguna cámara disponible en este dispositivo.";
+      message = I18n.t("camera.errorNotFound");
     } else if (name === "NotReadableError") {
-      message = "La cámara está siendo usada por otra aplicación. Ciérrala e inténtalo de nuevo.";
+      message = I18n.t("camera.errorInUse");
     }
     $("#cameraVideo")?.classList.add("hidden");
     const state = $("#cameraErrorState");
@@ -769,7 +775,7 @@
       // just did nothing with no feedback at all. Now the shutter is
       // disabled during that window (see setShutterReady), but keep this
       // as a safety net in case a tap lands in the gap anyway.
-      toast("La cámara todavía se está preparando, un momento…", "error");
+      toast(I18n.t("camera.warmingUpToast"), "error");
       return;
     }
     captureInFlight = true;
@@ -783,7 +789,7 @@
       if (captureInFlight) {
         console.warn("capturePhoto: watchdog fired, forcing capture state to reset");
         captureInFlight = false;
-        toast("La captura tardó demasiado. Inténtalo de nuevo.", "error");
+        toast(I18n.t("camera.captureTimeoutToast"), "error");
       }
     }, 10000);
     try {
@@ -818,7 +824,7 @@
     processNextInQueue();
     } catch (err) {
       console.error("capture failed", err);
-      toast("No se pudo capturar la imagen. Inténtalo de nuevo.", "error");
+      toast(I18n.t("camera.captureFailedToast"), "error");
     } finally {
       clearTimeout(captureWatchdog);
       captureWatchdog = null;
@@ -1070,7 +1076,7 @@
   $("#cropAutoBtn").addEventListener("click", () => {
     Crop.corners = ImageProcessing.detectDocumentCorners(Crop.sourceCanvas);
     drawCrop();
-    toast("Bordes detectados automáticamente");
+    toast(I18n.t("crop.autoDetectToast"));
   });
   $("#cropResetBtn").addEventListener("click", () => {
     const sc = Crop.sourceCanvas;
@@ -1742,6 +1748,23 @@
     $("#ocrTranslatedText").classList.add("hidden");
   }
 
+  // Remembers the last-used OCR document language across sessions/pages
+  // (separate from the UI language — a Spanish-speaking user can still
+  // scan an English contract). Defaults to whatever tesseract code matches
+  // the current UI language, falling back to Spanish.
+  const OCR_LANG_STORAGE_KEY = "skanixx_ocr_lang";
+  const UI_TO_TESSERACT_LANG = { es: "spa", en: "eng", pt: "por", fr: "fra", de: "deu" };
+  (function initOcrLangSelect() {
+    const sel = $("#ocrSourceLang");
+    if (!sel) return;
+    let saved = null;
+    try { saved = localStorage.getItem(OCR_LANG_STORAGE_KEY); } catch { /* ignore */ }
+    sel.value = saved || UI_TO_TESSERACT_LANG[I18n.lang] || "spa";
+    sel.addEventListener("change", () => {
+      try { localStorage.setItem(OCR_LANG_STORAGE_KEY, sel.value); } catch { /* ignore */ }
+    });
+  })();
+
   $("#ocrRunBtn").addEventListener("click", async () => {
     if (!State.activePage) return;
     const btn = $("#ocrRunBtn");
@@ -1749,15 +1772,26 @@
     $("#ocrProgress").classList.remove("hidden");
     $("#ocrResultWrap").classList.add("hidden");
     $("#ocrProgressFill").style.width = "0%";
-    $("#ocrProgressLabel").textContent = "Preparando reconocimiento…";
+    $("#ocrProgressLabel").textContent = I18n.t("ocr.preparing");
     try {
       const canvas = renderPageForOcr(State.activePage, 2400);
-      const { text } = await OCR.recognize(canvas, "spa", (progress) => {
+      // Recognizing with the wrong language model doesn't just produce
+      // noisy text — Tesseract will confidently "correct" words toward
+      // its loaded dictionary, silently turning e.g. English text into
+      // plausible-looking but wrong Spanish words if forced to use "spa".
+      // That corrupted text is what used to get sent to translate()
+      // afterward, which is the most likely reason translations came out
+      // as unrelated phrases: the source text was already wrong before
+      // translation ever ran. Using the document's actual language fixes
+      // recognition accuracy directly, and makes any later translation
+      // start from correct text.
+      const ocrLang = $("#ocrSourceLang")?.value || "spa";
+      const { text } = await OCR.recognize(canvas, ocrLang, (progress) => {
         const pct = Math.round(progress * 100);
         $("#ocrProgressFill").style.width = pct + "%";
-        $("#ocrProgressLabel").textContent = `Reconociendo texto… ${pct}%`;
+        $("#ocrProgressLabel").textContent = I18n.t("ocr.recognizing", { pct });
       });
-      $("#ocrResultText").value = text || "No se detectó texto en esta página.";
+      $("#ocrResultText").value = text || I18n.t("ocr.noText");
       $("#ocrResultWrap").classList.remove("hidden");
       if (State.editingDocId) {
         const doc = await DocuDB.getById(State.editingDocId);
@@ -1778,9 +1812,9 @@
   $("#ocrCopyBtn").addEventListener("click", async () => {
     try {
       await navigator.clipboard.writeText($("#ocrResultText").value);
-      toast("Texto copiado ✓", "success");
+      toast(I18n.t("ocr.copiedToast"), "success");
     } catch (err) {
-      toast("No se pudo copiar el texto", "error");
+      toast(I18n.t("ocr.copyFailedToast"), "error");
     }
   });
   $("#ocrTxtBtn").addEventListener("click", () => {
@@ -1802,16 +1836,17 @@
   });
   $("#ocrTranslateBtn").addEventListener("click", async () => {
     const text = $("#ocrResultText").value.trim();
-    if (!text) { toast("Primero extrae el texto de la página", "error"); return; }
+    if (!text) { toast(I18n.t("ocr.emptyTextToast"), "error"); return; }
     const btn = $("#ocrTranslateBtn");
-    btn.disabled = true; const original = btn.textContent; btn.textContent = "Traduciendo…";
+    btn.disabled = true; const original = btn.textContent; btn.textContent = "…";
     try {
       const translated = await OCR.translate(text, $("#ocrTranslateLang").value);
       $("#ocrTranslatedText").value = translated;
       $("#ocrTranslatedText").classList.remove("hidden");
+      toast(I18n.t("ocr.translatedToast"), "success");
     } catch (err) {
       console.error(err);
-      toast("No se pudo traducir (revisa tu conexión)", "error");
+      toast(I18n.t("ocr.translateFailedToast"), "error");
     } finally {
       btn.disabled = false; btn.textContent = original;
     }
@@ -1833,7 +1868,7 @@
   function renderReviewGrid() {
     const grid = $("#reviewGrid");
     grid.innerHTML = "";
-    $("#reviewCount").textContent = `${State.currentPages.length} página${State.currentPages.length === 1 ? "" : "s"}`;
+    $("#reviewCount").textContent = I18n.t("review.pagesCount", { n: State.currentPages.length });
     State.currentPages.forEach((page, i) => {
       const card = document.createElement("div");
       card.className = "review-card" + (reviewSelectMode ? " select-mode" : "") + (reviewSelectedIds.has(page.id) ? " selected" : "");
@@ -1925,7 +1960,7 @@
     for (const id of [...reviewSelectedIds]) if (!validIds.has(id)) reviewSelectedIds.delete(id);
     $("#reviewSelectBar").classList.toggle("hidden", !reviewSelectMode);
     $("#reviewSelectModeBtn").textContent = reviewSelectMode ? "Listo" : "Seleccionar";
-    $("#reviewSelectCount").textContent = `${reviewSelectedIds.size} seleccionada${reviewSelectedIds.size === 1 ? "" : "s"}`;
+    $("#reviewSelectCount").textContent = I18n.t("review.selectedCount", { n: reviewSelectedIds.size });
     $("#reviewSelectDeleteBtn").disabled = reviewSelectedIds.size === 0;
   }
 
@@ -1980,7 +2015,15 @@
 
   async function addSearchableTextLayer(pdf, pageIndex, page, pdfPageCanvas) {
     const ocrCanvas = renderPageForOcr(page, 2400);
-    const { words } = await OCR.recognize(ocrCanvas, "spa");
+    // Use whatever OCR document-language the user has selected/remembered
+    // (see initOcrLangSelect above) instead of a hardcoded "spa" — forcing
+    // the wrong language model here silently corrupts the embedded
+    // searchable text for any non-Spanish document, the exact same issue
+    // fixed for the on-screen OCR panel.
+    const ocrLang = $("#ocrSourceLang")?.value
+      || (() => { try { return localStorage.getItem(OCR_LANG_STORAGE_KEY); } catch { return null; } })()
+      || "spa";
+    const { words } = await OCR.recognize(ocrCanvas, ocrLang);
     if (!words || !words.length) return;
     const scaleX = pdfPageCanvas.width / ocrCanvas.width;
     const scaleY = pdfPageCanvas.height / ocrCanvas.height;
@@ -2293,6 +2336,17 @@
     const saved = localStorage.getItem("skanix-theme");
     if (saved) applyTheme(saved);
     else if (window.matchMedia("(prefers-color-scheme: light)").matches) applyTheme("light");
+  })();
+
+  // I18n.init() already ran translations against whatever localStorage/
+  // navigator.language picked before any of app.js's own listeners
+  // attached (see the very top of this file); this just syncs the visible
+  // <select> to match and wires up switching languages afterward.
+  (function initLang() {
+    const sel = $("#langSelect");
+    if (!sel) return;
+    sel.value = I18n.lang;
+    sel.addEventListener("change", () => I18n.setLang(sel.value));
   })();
 
   let deferredPrompt = null;
