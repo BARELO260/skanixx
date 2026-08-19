@@ -4,7 +4,7 @@
  * camera mode/FOV from the visible preview on mobile devices.
  */
 const CameraController = (() => {
-  let stream = null, facingMode = "environment", videoEl = null, lastGeometry = null;
+  let stream = null, facingMode = "environment", videoEl = null, lastGeometry = null, startPromise = null;
 
   // Upper bound only — this is *not* what we ask for by default. It exists
   // so applyConstraints() below never requests something absurd (e.g. a
@@ -12,32 +12,85 @@ const CameraController = (() => {
   // (8/12/48MP) be used instead of being capped at a fixed mid-range value.
   const HARD_MAX_DIM = 6000;
 
+  // This app fully closes and reopens the camera stream around every single
+  // photo (capture -> crop -> edit -> reopen for the next page), so a
+  // multi-page scan can cycle getUserMedia() many times in one sitting.
+  // Repeated rapid acquire/release of the camera hardware is a known source
+  // of flakiness on Android WebViews in particular: a new getUserMedia()
+  // call issued before the platform has actually released the previous
+  // session can hang indefinitely (never resolving, never rejecting)
+  // instead of failing cleanly — which is exactly what "stops taking photos
+  // after a few tries, needs an app restart" looks like from the outside,
+  // since nothing was left around to time it out. Every step below that
+  // talks to the camera hardware is now wrapped in a timeout so a hang can
+  // never again leave the app stuck; it surfaces as a normal, retryable
+  // camera error instead.
+  function withTimeout(promise, ms, message) {
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(message)), ms);
+      promise.then(
+        (v) => { clearTimeout(timer); resolve(v); },
+        (e) => { clearTimeout(timer); reject(e); }
+      );
+    });
+  }
+  function delay(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
   async function start(video) {
+    // Re-entrancy guard: if start() is called again while one is already
+    // in flight (double-tapping "open camera", tapping retry right after
+    // an in-progress attempt, rapid view navigation), just ride along with
+    // the existing attempt instead of firing a second concurrent
+    // getUserMedia(). Two overlapping negotiations racing to assign the
+    // shared `stream` variable can orphan the loser's tracks — a real
+    // MediaStreamTrack left running but referenced nowhere, still holding
+    // the camera hardware. A few of those piling up over a scanning
+    // session is exactly the kind of thing that makes the camera "stop
+    // working after a few tries" until the app (not just the view) restarts.
+    if (startPromise) return startPromise;
+    startPromise = doStart(video).finally(() => { startPromise = null; });
+    return startPromise;
+  }
+
+  async function doStart(video) {
     videoEl = video;
+    const hadPreviousStream = !!stream;
     await stop();
+    // Give the platform a brief moment to actually release the previous
+    // camera session before asking for a new one — reacquiring immediately
+    // is the specific pattern that tends to trigger the hang/failure
+    // described above. Skipped on the very first open (nothing to release).
+    if (hadPreviousStream) await delay(150);
     // Ask for a generous "ideal" so the browser doesn't default to a low
     // preview resolution, then immediately try to push the track to the
     // camera's actual maximum via getCapabilities()/applyConstraints(). A
     // fixed ideal like 2560x1920 silently throws away real sensor
     // resolution on any phone whose camera can do better (most of them).
-    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: {
-      facingMode: { ideal: facingMode }, width: { ideal: 4096 }, height: { ideal: 3072 },
-      aspectRatio: { ideal: 4 / 3 }, frameRate: { ideal: 30, max: 30 },
-    }});
+    stream = await withTimeout(
+      navigator.mediaDevices.getUserMedia({ audio: false, video: {
+        facingMode: { ideal: facingMode }, width: { ideal: 4096 }, height: { ideal: 3072 },
+        aspectRatio: { ideal: 4 / 3 }, frameRate: { ideal: 30, max: 30 },
+      }}),
+      12000,
+      "No se pudo acceder a la cámara (tiempo de espera agotado)."
+    );
     await maximizeTrackResolution(stream.getVideoTracks()[0]);
     video.srcObject = stream;
-    await new Promise((resolve) => {
+    await withTimeout(new Promise((resolve) => {
       if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) return resolve();
       video.addEventListener("loadeddata", resolve, { once: true });
-    });
-    await video.play();
+    }), 8000, "La cámara no entregó imagen a tiempo.");
+    await withTimeout(video.play(), 5000, "No se pudo iniciar la vista previa de la cámara.");
     await waitForLiveFrame();
   }
 
   // Re-requests the track at the highest resolution the hardware actually
-  // reports via getCapabilities(). This is best-effort: some browsers
-  // (older WebViews, some desktop UAs) don't implement getCapabilities on
-  // video tracks, in which case we just keep whatever getUserMedia gave us.
+  // reports via getCapabilities(). This is best-effort and non-critical —
+  // it's wrapped in its own short timeout so a stalled negotiation here
+  // (seen in the wild on some Android drivers after several open/close
+  // cycles) can never block the rest of start() from completing; on
+  // timeout we simply keep whatever resolution getUserMedia already gave
+  // us instead of failing the whole camera session over an enhancement.
   async function maximizeTrackResolution(track) {
     if (!track || typeof track.getCapabilities !== "function") return;
     try {
@@ -48,9 +101,11 @@ const CameraController = (() => {
       if (!maxW || !maxH) return;
       const alreadyAtMax = (settings.width || 0) >= maxW && (settings.height || 0) >= maxH;
       if (alreadyAtMax) return;
-      await track.applyConstraints({
-        width: { ideal: maxW }, height: { ideal: maxH },
-      });
+      await withTimeout(
+        track.applyConstraints({ width: { ideal: maxW }, height: { ideal: maxH } }),
+        3000,
+        "applyConstraints timed out"
+      );
     } catch {
       // Camera stays at whatever resolution getUserMedia already picked.
     }
