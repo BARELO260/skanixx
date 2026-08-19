@@ -35,13 +35,20 @@
       <span class="brand-name">Skan<em>ix</em></span>
     </div>
     <div class="topbar-actions">
-      <button id="themeToggle" class="icon-btn" title="Cambiar tema" aria-label="Cambiar tema claro/oscuro">
+      <select id="langSelect" class="lang-select" aria-label="Idioma de la aplicación" data-i18n-aria="topbar.langAria">
+        <option value="es">ES</option>
+        <option value="en">EN</option>
+        <option value="pt">PT</option>
+        <option value="fr">FR</option>
+        <option value="de">DE</option>
+      </select>
+      <button id="themeToggle" class="icon-btn" title="Cambiar tema" aria-label="Cambiar tema claro/oscuro" data-i18n-title="topbar.themeToggle" data-i18n-aria="topbar.themeToggleAria">
         <svg class="i-sun" viewBox="0 0 24 24" width="19" height="19"><circle cx="12" cy="12" r="4.2"/><g stroke-linecap="round"><line x1="12" y1="2.5" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="21.5"/><line x1="2.5" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="21.5" y2="12"/><line x1="4.9" y1="4.9" x2="6.6" y2="6.6"/><line x1="17.4" y1="17.4" x2="19.1" y2="19.1"/><line x1="4.9" y1="19.1" x2="6.6" y2="17.4"/><line x1="17.4" y1="6.6" x2="19.1" y2="4.9"/></g></svg>
         <svg class="i-moon" viewBox="0 0 24 24" width="19" height="19"><path d="M20 14.5A8.5 8.5 0 1 1 9.5 4a7 7 0 0 0 10.5 10.5Z"/></svg>
       </button>
-      <button id="installBtn" class="btn-install hidden" aria-label="Instalar aplicación">
+      <button id="installBtn" class="btn-install hidden" aria-label="Instalar aplicación" data-i18n-aria="topbar.installAria">
         <svg viewBox="0 0 24 24" width="16" height="16"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 19h14" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        Instalar
+        <span data-i18n="topbar.install">Instalar</span>
       </button>
     </div>
   </header>
@@ -57,8 +64,8 @@
             <svg viewBox="0 0 24 24" width="28" height="28"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.6l.9-1.5A1.5 1.5 0 0 1 10.29 3.7h3.42a1.5 1.5 0 0 1 1.29.8l.9 1.5h1.6A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-9Z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="13" r="3.4" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
           </span>
           <span class="action-text">
-            <strong>Escanear documento</strong>
-            <small>Apunta la cámara — el recorte es automático</small>
+            <strong data-i18n="home.scanTitle">Escanear documento</strong>
+            <small data-i18n="home.scanSubtitle">Apunta la cámara — el recorte es automático</small>
           </span>
         </button>
 
@@ -67,7 +74,7 @@
             <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 15.5V4M12 4 7.5 8.5M12 4l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 15v3A2.5 2.5 0 0 0 7 20.5h10a2.5 2.5 0 0 0 2.5-2.5v-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
           </span>
           <span class="action-text">
-            <strong>Subir imagen</strong>
+            <strong data-i18n="home.uploadTitle">Subir imagen</strong>
           </span>
         </button>
         <input type="file" id="fileInput" accept="image/*" multiple hidden />
@@ -75,24 +82,24 @@
 
       <div id="pendingBar" class="pending-bar hidden">
         <div class="pending-info">
-          <span id="pendingCount">0</span> página(s) en el documento actual
+          <span id="pendingCount">0</span> <span data-i18n="home.pendingSuffix">página(s) en el documento actual</span>
         </div>
-        <button id="pendingReviewBtn" class="btn-chip">Revisar y exportar →</button>
+        <button id="pendingReviewBtn" class="btn-chip" data-i18n="home.reviewBtn">Revisar y exportar →</button>
       </div>
 
       <div class="section-head">
-        <h2>Documentos recientes</h2>
-        <button id="clearHistoryBtn" class="link-btn">Vaciar historial</button>
+        <h2 data-i18n="home.recentTitle">Documentos recientes</h2>
+        <button id="clearHistoryBtn" class="link-btn" data-i18n="home.clearHistory">Vaciar historial</button>
       </div>
       <label class="search-field">
         <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.7"/><line x1="16.2" y1="16.2" x2="21" y2="21" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-        <input type="text" id="historySearchInput" placeholder="Buscar por nombre o texto del documento…" />
+        <input type="text" id="historySearchInput" placeholder="Buscar por nombre o texto del documento…" data-i18n-placeholder="home.searchPlaceholder" />
       </label>
       <div id="historyGrid" class="history-grid">
-        <p class="empty-hint">Aún no has escaneado ningún documento. Tus escaneos aparecerán aquí, guardados en este dispositivo.</p>
+        <p class="empty-hint" data-i18n="home.emptyHint">Aún no has escaneado ningún documento. Tus escaneos aparecerán aquí, guardados en este dispositivo.</p>
       </div>
 
-      <p class="home-footnote">Skanix convierte cualquier papel en un PDF nítido en segundos — todo ocurre en tu dispositivo, incluso sin conexión.</p>
+      <p class="home-footnote" data-i18n="home.footnote">Skanix convierte cualquier papel en un PDF nítido en segundos — todo ocurre en tu dispositivo, incluso sin conexión.</p>
     </section>
 
     <!-- ===== CAMERA VIEW ===== -->
@@ -109,32 +116,32 @@
           <div id="scanSweep" class="scan-sweep"></div>
         </div>
         <div id="detectBadge" class="detect-badge">
-          <span class="detect-dot"></span><span id="detectBadgeText">Buscando…</span>
+          <span class="detect-dot"></span><span id="detectBadgeText" data-i18n="camera.searching">Buscando…</span>
         </div>
-        <button id="autoCaptureToggle" class="auto-toggle" aria-pressed="true" title="Captura automática">
+        <button id="autoCaptureToggle" class="auto-toggle" aria-pressed="true" title="Captura automática" data-i18n-title="camera.autoTitle">
           <svg viewBox="0 0 24 24" width="14" height="14"><path d="M5 13l4 4L19 7" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          Auto</button>
-        <div id="cameraHint" class="camera-hint">Encuadra el documento dentro del marco</div>
+          <span data-i18n="camera.autoLabel">Auto</span></button>
+        <div id="cameraHint" class="camera-hint" data-i18n="camera.hint">Encuadra el documento dentro del marco</div>
         <div id="flashOverlay" class="flash-overlay"></div>
         <div id="cameraErrorState" class="camera-error-state hidden">
           <svg viewBox="0 0 24 24" width="34" height="34"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.6l.9-1.5A1.5 1.5 0 0 1 10.29 3.7h3.42a1.5 1.5 0 0 1 1.29.8l.9 1.5h1.6A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-9Z" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="4" y1="4" x2="20" y2="20" stroke="currentColor" stroke-width="1.5"/></svg>
-          <p id="cameraErrorText">No se pudo acceder a la cámara.</p>
+          <p id="cameraErrorText" data-i18n="camera.errorDefault">No se pudo acceder a la cámara.</p>
           <div class="camera-error-actions">
-            <button id="cameraErrorBackBtn" class="btn-chip btn-ghost">Volver</button>
-            <button id="cameraRetryBtn" class="btn-chip">Reintentar</button>
+            <button id="cameraErrorBackBtn" class="btn-chip btn-ghost" data-i18n="common.back">Volver</button>
+            <button id="cameraRetryBtn" class="btn-chip" data-i18n="common.retry">Reintentar</button>
           </div>
         </div>
       </div>
       <div class="camera-controls">
-        <button id="cameraBackBtn" class="round-btn" aria-label="Cancelar">
+        <button id="cameraBackBtn" class="round-btn" aria-label="Cancelar" data-i18n-aria="common.cancel">
           <svg viewBox="0 0 24 24" width="20" height="20"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
         </button>
-        <button id="shutterBtn" class="shutter-btn" aria-label="Capturar foto"><span></span></button>
-        <button id="cameraSwitchBtn" class="round-btn" aria-label="Cambiar cámara">
+        <button id="shutterBtn" class="shutter-btn" aria-label="Capturar foto" data-i18n-aria="camera.captureAria"><span></span></button>
+        <button id="cameraSwitchBtn" class="round-btn" aria-label="Cambiar cámara" data-i18n-aria="camera.switchAria">
           <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h3l1.5-2h7L17 7h3v12H4V7Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="13" r="3" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M9 4.5h2M13 4.5h2" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
         </button>
       </div>
-      <p class="camera-multi-hint">Puedes capturar varias páginas seguidas; se añadirán al documento actual.</p>
+      <p class="camera-multi-hint" data-i18n="camera.multiHint">Puedes capturar varias páginas seguidas; se añadirán al documento actual.</p>
     </section>
 
     <!-- ===== CROP / PERSPECTIVE VIEW ===== -->
@@ -144,21 +151,21 @@
       </div>
       <canvas id="cropLoupe" class="crop-loupe hidden"></canvas>
       <div class="crop-controls">
-        <button id="cropRotateLeftBtn" class="btn-chip btn-ghost" title="Girar a la izquierda">
+        <button id="cropRotateLeftBtn" class="btn-chip btn-ghost" title="Girar a la izquierda" data-i18n-title="crop.rotateLeft">
           <svg viewBox="0 0 24 24" width="15" height="15"><path d="M9 14 5 10l4-4M5 10h9a5 5 0 0 1 0 10H9" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
         <button id="cropAutoBtn" class="btn-chip btn-ghost">
           <svg viewBox="0 0 24 24" width="15" height="15"><path d="M4 9V5.5A1.5 1.5 0 0 1 5.5 4H9M20 9V5.5A1.5 1.5 0 0 0 18.5 4H15M4 15v3.5A1.5 1.5 0 0 0 5.5 20H9M20 15v3.5a1.5 1.5 0 0 1-1.5 1.5H15" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-          Auto-detectar bordes
+          <span data-i18n="crop.autoDetect">Auto-detectar bordes</span>
         </button>
-        <button id="cropResetBtn" class="btn-chip btn-ghost">Reiniciar esquinas</button>
-        <button id="cropRotateRightBtn" class="btn-chip btn-ghost" title="Girar a la derecha">
+        <button id="cropResetBtn" class="btn-chip btn-ghost" data-i18n="crop.resetCorners">Reiniciar esquinas</button>
+        <button id="cropRotateRightBtn" class="btn-chip btn-ghost" title="Girar a la derecha" data-i18n-title="crop.rotateRight">
           <svg viewBox="0 0 24 24" width="15" height="15"><path d="M15 14l4-4-4-4m4 4H10a5 5 0 0 0 0 10h5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>
         </button>
       </div>
       <div class="crop-footer">
-        <button id="cropBackBtn" class="btn-secondary">Cancelar</button>
-        <button id="cropConfirmBtn" class="btn-primary">Aplicar recorte →</button>
+        <button id="cropBackBtn" class="btn-secondary" data-i18n="common.cancel">Cancelar</button>
+        <button id="cropConfirmBtn" class="btn-primary" data-i18n="crop.confirm">Aplicar recorte →</button>
       </div>
     </section>
 
@@ -167,76 +174,76 @@
       <div class="edit-stage">
         <div id="editLoader" class="edit-loader hidden">
           <div class="spinner"></div>
-          <p id="editLoaderText">Procesando imagen…</p>
+          <p id="editLoaderText" data-i18n="edit.processing">Procesando imagen…</p>
         </div>
         <canvas id="editCanvas"></canvas>
         <canvas id="annotateOverlay" class="annotate-overlay hidden"></canvas>
         <div id="annotateFloatingBar" class="annotate-floating-bar hidden">
-          <button id="annEditTextBtn" class="afb-btn" title="Editar texto">
+          <button id="annEditTextBtn" class="afb-btn" title="Editar texto" data-i18n-title="edit.editText">
             <svg viewBox="0 0 24 24" width="15" height="15"><path d="M4 20h4L18.5 9.5a2 2 0 0 0 0-2.8l-1.2-1.2a2 2 0 0 0-2.8 0L4 16v4Z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
           </button>
-          <button id="annDeleteBtn" class="afb-btn afb-danger" title="Eliminar">
+          <button id="annDeleteBtn" class="afb-btn afb-danger" title="Eliminar" data-i18n-title="common.delete">
             <svg viewBox="0 0 24 24" width="15" height="15"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0 1 12a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1l1-12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
           </button>
         </div>
       </div>
 
       <div class="edit-tabs">
-        <button class="edit-tab active" data-tab="filters">Filtros</button>
-        <button class="edit-tab" data-tab="adjust">Ajustes</button>
-        <button class="edit-tab" data-tab="transform">Transformar</button>
-        <button class="edit-tab" data-tab="annotate">Anotar</button>
-        <button class="edit-tab" data-tab="ocr">Texto</button>
+        <button class="edit-tab active" data-tab="filters" data-i18n="edit.tabFilters">Filtros</button>
+        <button class="edit-tab" data-tab="adjust" data-i18n="edit.tabAdjust">Ajustes</button>
+        <button class="edit-tab" data-tab="transform" data-i18n="edit.tabTransform">Transformar</button>
+        <button class="edit-tab" data-tab="annotate" data-i18n="edit.tabAnnotate">Anotar</button>
+        <button class="edit-tab" data-tab="ocr" data-i18n="edit.tabOcr">Texto</button>
       </div>
 
       <div class="edit-panel" id="panel-filters">
         <div class="filter-strip" id="filterStrip">
-          <button class="filter-chip active" data-filter="document"><span class="fchip-swatch fs-document"></span>Documento</button>
-          <button class="filter-chip" data-filter="bw"><span class="fchip-swatch fs-bw"></span>Blanco y negro</button>
-          <button class="filter-chip" data-filter="gray"><span class="fchip-swatch fs-gray"></span>Escala de grises</button>
-          <button class="filter-chip" data-filter="color"><span class="fchip-swatch fs-color"></span>Color mejorado</button>
-          <button class="filter-chip" data-filter="sharp"><span class="fchip-swatch fs-sharp"></span>Alta nitidez</button>
-          <button class="filter-chip" data-filter="original"><span class="fchip-swatch fs-original"></span>Original</button>
+          <button class="filter-chip active" data-filter="document"><span class="fchip-swatch fs-document"></span><span data-i18n="filter.document">Documento</span></button>
+          <button class="filter-chip" data-filter="bw"><span class="fchip-swatch fs-bw"></span><span data-i18n="filter.bw">Blanco y negro</span></button>
+          <button class="filter-chip" data-filter="gray"><span class="fchip-swatch fs-gray"></span><span data-i18n="filter.gray">Escala de grises</span></button>
+          <button class="filter-chip" data-filter="color"><span class="fchip-swatch fs-color"></span><span data-i18n="filter.color">Color mejorado</span></button>
+          <button class="filter-chip" data-filter="sharp"><span class="fchip-swatch fs-sharp"></span><span data-i18n="filter.sharp">Alta nitidez</span></button>
+          <button class="filter-chip" data-filter="original"><span class="fchip-swatch fs-original"></span><span data-i18n="filter.original">Original</span></button>
         </div>
       </div>
 
       <div class="edit-panel hidden" id="panel-adjust">
         <button id="autoEnhanceBtn" class="btn-chip auto-enhance-btn">
           <svg viewBox="0 0 24 24" width="15" height="15"><path d="M12 3v3M12 18v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M3 12h3M18 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>
-          Mejorar automáticamente
+          <span data-i18n="edit.autoEnhance">Mejorar automáticamente</span>
         </button>
         <label class="slider-row">
-          <span>Brillo</span>
+          <span data-i18n="adjust.brightness">Brillo</span>
           <input type="range" id="rangeBrightness" min="-100" max="100" value="0" />
           <output id="outBrightness">0</output>
         </label>
         <label class="slider-row">
-          <span>Contraste</span>
+          <span data-i18n="adjust.contrast">Contraste</span>
           <input type="range" id="rangeContrast" min="-100" max="100" value="0" />
           <output id="outContrast">0</output>
         </label>
         <label class="slider-row">
-          <span>Saturación</span>
+          <span data-i18n="adjust.saturation">Saturación</span>
           <input type="range" id="rangeSaturation" min="-100" max="100" value="0" />
           <output id="outSaturation">0</output>
         </label>
-        <button id="resetAdjustBtn" class="link-btn">Restablecer ajustes</button>
+        <button id="resetAdjustBtn" class="link-btn" data-i18n="adjust.reset">Restablecer ajustes</button>
       </div>
 
       <div class="edit-panel hidden" id="panel-transform">
         <div class="transform-row">
           <button id="rotateLeftBtn" class="btn-chip btn-ghost">
             <svg viewBox="0 0 24 24" width="15" height="15"><path d="M4 12a8 8 0 1 1 2.6 5.9M4 12V6M4 12h6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Girar izquierda
+            <span data-i18n="transform.rotateLeft">Girar izquierda</span>
           </button>
           <button id="rotateRightBtn" class="btn-chip btn-ghost">
             <svg viewBox="0 0 24 24" width="15" height="15" style="transform:scaleX(-1)"><path d="M4 12a8 8 0 1 1 2.6 5.9M4 12V6M4 12h6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Girar derecha
+            <span data-i18n="transform.rotateRight">Girar derecha</span>
           </button>
-          <button id="backToCropBtn" class="btn-chip btn-ghost">Volver a recortar</button>
+          <button id="backToCropBtn" class="btn-chip btn-ghost" data-i18n="transform.backToCrop">Volver a recortar</button>
           <button id="retakePhotoBtn" class="btn-chip btn-ghost">
             <svg viewBox="0 0 24 24" width="15" height="15"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.6l.9-1.5A1.5 1.5 0 0 1 10.29 3.7h3.42a1.5 1.5 0 0 1 1.29.8l.9 1.5h1.6A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-9Z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="13" r="3.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
-            Volver a escanear esta página
+            <span data-i18n="transform.retake">Volver a escanear esta página</span>
           </button>
         </div>
       </div>
@@ -245,19 +252,19 @@
         <div class="annotate-toolbar">
           <button class="ann-tool" data-tool="text">
             <svg viewBox="0 0 24 24" width="16" height="16"><path d="M5 6h14M12 6v13" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-            Texto
+            <span data-i18n="ann.text">Texto</span>
           </button>
           <button class="ann-tool" data-tool="signature">
             <svg viewBox="0 0 24 24" width="16" height="16"><path d="M4 18c2-1 3-3 3.5-5C8 10 9 8 10 8c1.3 0 1 3 2.3 3 1.4 0 2.2-3 3.7-3 1.2 0 1 2 3 2" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
-            Firma
+            <span data-i18n="ann.signature">Firma</span>
           </button>
           <button class="ann-tool" data-tool="brush">
             <svg viewBox="0 0 24 24" width="16" height="16"><path d="M9 15c-1.7 0-3 1.3-3 3s-1 3-2 3.5c1.6.5 5 .5 6.5-1A3.5 3.5 0 0 0 9 15Z" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12.5 12 18 6.5a1.8 1.8 0 0 1 2.5 2.5L15 14.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-            Pincel
+            <span data-i18n="ann.brush">Pincel</span>
           </button>
           <button class="ann-tool" data-tool="watermark">
             <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M9 12h6M12 9v6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".6"/></svg>
-            Marca de agua
+            <span data-i18n="ann.watermark">Marca de agua</span>
           </button>
         </div>
 
@@ -270,74 +277,85 @@
             <button class="swatch" data-color="#111827" style="background:#111827"></button>
           </div>
           <label class="slider-row">
-            <span>Grosor</span>
+            <span data-i18n="ann.brushWidth">Grosor</span>
             <input type="range" id="brushWidthRange" min="1" max="10" value="3" />
           </label>
           <div class="transform-row">
-            <button id="brushUndoBtn" class="btn-chip btn-ghost">Deshacer trazo</button>
-            <button id="brushClearBtn" class="btn-chip btn-ghost">Borrar todos</button>
+            <button id="brushUndoBtn" class="btn-chip btn-ghost" data-i18n="ann.undoStroke">Deshacer trazo</button>
+            <button id="brushClearBtn" class="btn-chip btn-ghost" data-i18n="ann.clearAll">Borrar todos</button>
           </div>
         </div>
 
         <div id="annSubpanelWatermark" class="ann-subpanel hidden">
           <label class="field">
-            <span>Texto de la marca de agua</span>
-            <input type="text" id="watermarkText" placeholder="Ej. CONFIDENCIAL" maxlength="40" />
+            <span data-i18n="ann.watermarkTextLabel">Texto de la marca de agua</span>
+            <input type="text" id="watermarkText" placeholder="Ej. CONFIDENCIAL" maxlength="40" data-i18n-placeholder="ann.watermarkPlaceholder" />
           </label>
           <label class="slider-row">
-            <span>Opacidad</span>
+            <span data-i18n="ann.opacity">Opacidad</span>
             <input type="range" id="watermarkOpacity" min="5" max="60" value="18" />
           </label>
           <label class="slider-row">
-            <span>Ángulo</span>
+            <span data-i18n="ann.angle">Ángulo</span>
             <input type="range" id="watermarkAngle" min="-90" max="90" value="-30" />
           </label>
           <div class="transform-row">
-            <button id="watermarkApplyBtn" class="btn-chip">Aplicar</button>
-            <button id="watermarkRemoveBtn" class="btn-chip btn-ghost">Quitar</button>
+            <button id="watermarkApplyBtn" class="btn-chip" data-i18n="common.apply">Aplicar</button>
+            <button id="watermarkRemoveBtn" class="btn-chip btn-ghost" data-i18n="common.remove">Quitar</button>
           </div>
         </div>
 
-        <p id="annHint" class="ann-hint">Elige una herramienta para empezar a anotar sobre el documento.</p>
+        <p id="annHint" class="ann-hint" data-i18n="ann.hint">Elige una herramienta para empezar a anotar sobre el documento.</p>
       </div>
 
       <div class="edit-panel hidden" id="panel-ocr">
         <button id="ocrRunBtn" class="btn-chip">
           <svg viewBox="0 0 24 24" width="15" height="15"><path d="M4 5h16M4 12h10M4 19h13" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
-          Extraer texto (OCR)
+          <span data-i18n="ocr.run">Extraer texto (OCR)</span>
         </button>
+        <label class="field ocr-lang-row">
+          <span data-i18n="ocr.sourceLangLabel">Idioma del documento</span>
+          <select id="ocrSourceLang">
+            <option value="spa" data-i18n="ocr.langSpa">Español</option>
+            <option value="eng" data-i18n="ocr.langEng">Inglés</option>
+            <option value="por" data-i18n="ocr.langPor">Portugués</option>
+            <option value="fra" data-i18n="ocr.langFra">Francés</option>
+            <option value="deu" data-i18n="ocr.langDeu">Alemán</option>
+            <option value="spa+eng" data-i18n="ocr.langSpaEng">Español + Inglés (bilingüe)</option>
+          </select>
+        </label>
         <div id="ocrProgress" class="ocr-progress hidden">
           <div class="ocr-progress-bar"><span id="ocrProgressFill"></span></div>
           <span id="ocrProgressLabel">Reconociendo texto… 0%</span>
         </div>
         <div id="ocrResultWrap" class="ocr-result-wrap hidden">
-          <textarea id="ocrResultText" class="ocr-textarea" rows="6" placeholder="El texto extraído aparecerá aquí…"></textarea>
+          <textarea id="ocrResultText" class="ocr-textarea" rows="6" placeholder="El texto extraído aparecerá aquí…" data-i18n-placeholder="ocr.resultPlaceholder"></textarea>
           <div class="ocr-actions">
-            <button id="ocrCopyBtn" class="btn-chip btn-ghost">Copiar</button>
-            <button id="ocrTxtBtn" class="btn-chip btn-ghost">Exportar .txt</button>
-            <button id="ocrDocxBtn" class="btn-chip btn-ghost">Exportar .docx</button>
+            <button id="ocrCopyBtn" class="btn-chip btn-ghost" data-i18n="common.copy">Copiar</button>
+            <button id="ocrTxtBtn" class="btn-chip btn-ghost" data-i18n="ocr.exportTxt">Exportar .txt</button>
+            <button id="ocrDocxBtn" class="btn-chip btn-ghost" data-i18n="ocr.exportDocx">Exportar .docx</button>
           </div>
           <div class="ocr-translate-row">
             <select id="ocrTranslateLang">
-              <option value="en">Traducir a Inglés</option>
-              <option value="es">Traducir a Español</option>
-              <option value="pt">Traducir a Portugués</option>
-              <option value="fr">Traducir a Francés</option>
-              <option value="de">Traducir a Alemán</option>
+              <option value="en" data-i18n="ocr.translateToEn">Traducir a Inglés</option>
+              <option value="es" data-i18n="ocr.translateToEs">Traducir a Español</option>
+              <option value="pt" data-i18n="ocr.translateToPt">Traducir a Portugués</option>
+              <option value="fr" data-i18n="ocr.translateToFr">Traducir a Francés</option>
+              <option value="de" data-i18n="ocr.translateToDe">Traducir a Alemán</option>
             </select>
-            <button id="ocrTranslateBtn" class="btn-chip">Traducir</button>
+            <button id="ocrTranslateBtn" class="btn-chip" data-i18n="ocr.translate">Traducir</button>
           </div>
-          <textarea id="ocrTranslatedText" class="ocr-textarea hidden" rows="6" placeholder="Traducción…"></textarea>
+          <textarea id="ocrTranslatedText" class="ocr-textarea hidden" rows="6" placeholder="Traducción…" data-i18n-placeholder="ocr.translatedPlaceholder"></textarea>
         </div>
       </div>
 
       <div class="edit-footer">
-        <button id="editBackBtn" class="btn-secondary">Atrás</button>
+        <button id="editBackBtn" class="btn-secondary" data-i18n="common.back">Atrás</button>
         <div class="edit-history-actions" aria-label="Historial de edición">
-          <button id="editUndoBtn" class="btn-chip btn-ghost" disabled aria-label="Deshacer último cambio">Deshacer</button>
-          <button id="editRedoBtn" class="btn-chip btn-ghost" disabled aria-label="Rehacer último cambio">Rehacer</button>
+          <button id="editUndoBtn" class="btn-chip btn-ghost" disabled aria-label="Deshacer último cambio" data-i18n="common.undo" data-i18n-aria="edit.undoAria">Deshacer</button>
+          <button id="editRedoBtn" class="btn-chip btn-ghost" disabled aria-label="Rehacer último cambio" data-i18n="common.redo" data-i18n-aria="edit.redoAria">Rehacer</button>
         </div>
-        <button id="addPageBtn" class="btn-primary">Añadir página ✓</button>
+        <button id="addPageBtn" class="btn-primary" data-i18n="edit.addPage">Añadir página ✓</button>
       </div>
     </section>
 
@@ -347,42 +365,42 @@
         <h2 id="reviewTitle">Tu documento</h2>
         <div class="review-head-actions">
           <span id="reviewCount" class="pill">0 páginas</span>
-          <button id="reviewSelectModeBtn" class="btn-chip btn-ghost">Seleccionar</button>
+          <button id="reviewSelectModeBtn" class="btn-chip btn-ghost" data-i18n="review.selectMode">Seleccionar</button>
         </div>
       </div>
       <div id="reviewSelectBar" class="review-select-bar hidden">
         <span id="reviewSelectCount">0 seleccionadas</span>
         <div class="review-select-actions">
-          <button id="reviewSelectAllBtn" class="btn-chip btn-ghost">Todas</button>
-          <button id="reviewSelectDeleteBtn" class="btn-chip btn-ghost afb-danger" disabled>Eliminar</button>
-          <button id="reviewSelectCancelBtn" class="btn-chip btn-ghost">Cancelar</button>
+          <button id="reviewSelectAllBtn" class="btn-chip btn-ghost" data-i18n="review.selectAll">Todas</button>
+          <button id="reviewSelectDeleteBtn" class="btn-chip btn-ghost afb-danger" disabled data-i18n="common.delete">Eliminar</button>
+          <button id="reviewSelectCancelBtn" class="btn-chip btn-ghost" data-i18n="common.cancel">Cancelar</button>
         </div>
       </div>
       <div id="reviewEditActions" class="review-edit-actions hidden">
-        <button id="reviewRenameBtn" class="btn-chip btn-ghost">Renombrar</button>
-        <button id="reviewDeleteBtn" class="btn-chip btn-ghost afb-danger">Eliminar documento</button>
-        <span id="reviewSavedHint" class="autosave-hint hidden">Guardado ✓</span>
+        <button id="reviewRenameBtn" class="btn-chip btn-ghost" data-i18n="review.rename">Renombrar</button>
+        <button id="reviewDeleteBtn" class="btn-chip btn-ghost afb-danger" data-i18n="review.deleteDoc">Eliminar documento</button>
+        <span id="reviewSavedHint" class="autosave-hint hidden" data-i18n="review.saved">Guardado ✓</span>
       </div>
       <div id="reviewGrid" class="review-grid"></div>
       <div class="add-page-row">
         <button id="addMorePagesCameraBtn" class="add-page-tile">
           <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 8.5A2.5 2.5 0 0 1 6.5 6h1.6l.9-1.5A1.5 1.5 0 0 1 10.29 3.7h3.42a1.5 1.5 0 0 1 1.29.8l.9 1.5h1.6A2.5 2.5 0 0 1 20 8.5v9A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-9Z" fill="none" stroke="currentColor" stroke-width="1.6"/><circle cx="12" cy="13" r="3.2" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
-          Cámara
+          <span data-i18n="review.addCamera">Cámara</span>
         </button>
         <button id="addMorePagesUploadBtn" class="add-page-tile">
           <svg viewBox="0 0 24 24" width="20" height="20"><path d="M12 15.5V4M12 4 7.5 8.5M12 4l4.5 4.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><path d="M4.5 15v3A2.5 2.5 0 0 0 7 20.5h10a2.5 2.5 0 0 0 2.5-2.5v-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-          Galería
+          <span data-i18n="review.addGallery">Galería</span>
         </button>
       </div>
 
       <div class="export-panel">
         <label class="field">
-          <span>Nombre del archivo</span>
+          <span data-i18n="export.fileName">Nombre del archivo</span>
           <input type="text" id="fileNameInput" value="Documento" maxlength="60" />
         </label>
 
         <div class="field">
-          <span>Formato de exportación</span>
+          <span data-i18n="export.formatLabel">Formato de exportación</span>
           <div class="format-options">
             <label class="radio-pill"><input type="radio" name="format" value="pdf" checked><span>PDF</span></label>
             <label class="radio-pill"><input type="radio" name="format" value="docx"><span>Word</span></label>
@@ -394,13 +412,13 @@
         <label id="searchablePdfRow" class="check-row">
           <input type="checkbox" id="searchablePdfCheck" />
           <span>
-            <strong>PDF con texto buscable</strong>
-            <small>Reconoce el texto (OCR) y lo incrusta invisible sobre la imagen — podrás buscar, seleccionar y copiar el texto del PDF. Tarda algo más.</small>
+            <strong data-i18n="export.searchablePdfTitle">PDF con texto buscable</strong>
+            <small data-i18n="export.searchablePdfDesc">Reconoce el texto (OCR) y lo incrusta invisible sobre la imagen — podrás buscar, seleccionar y copiar el texto del PDF. Tarda algo más.</small>
           </span>
         </label>
 
         <label class="slider-row">
-          <span>Compresión</span>
+          <span data-i18n="export.compression">Compresión</span>
           <input type="range" id="rangeQuality" min="10" max="100" value="85" />
           <output id="outQuality">85%</output>
         </label>
@@ -408,9 +426,9 @@
         <div class="export-buttons">
           <button id="shareBtn" class="btn-secondary">
             <svg viewBox="0 0 24 24" width="16" height="16"><path d="M8.5 10.5 15 7M8.5 13.5 15 17M18 6a2 2 0 1 0 0-4 2 2 0 0 0 0 4Zm0 16a2 2 0 1 0 0-4 2 2 0 0 0 0 4ZM6 14a2 2 0 1 0 0-4 2 2 0 0 0 0 4Z" fill="none" stroke="currentColor" stroke-width="1.6"/></svg>
-            Compartir
+            <span data-i18n="common.share">Compartir</span>
           </button>
-          <button id="saveExportBtn" class="btn-primary btn-wide">Guardar y exportar</button>
+          <button id="saveExportBtn" class="btn-primary btn-wide" data-i18n="export.saveExport">Guardar y exportar</button>
         </div>
       </div>
     </section>
@@ -418,25 +436,25 @@
     <!-- ===== SIGNATURE MODAL ===== -->
     <div id="signatureModal" class="dialog-backdrop hidden">
       <div class="dialog signature-dialog">
-        <p>Dibuja tu firma</p>
+        <p data-i18n="sig.title">Dibuja tu firma</p>
         <canvas id="signatureCanvas" class="signature-canvas"></canvas>
-        <label class="signature-remember"><input id="signatureRemember" type="checkbox" /> Guardar para reutilizar en este dispositivo</label>
+        <label class="signature-remember"><input id="signatureRemember" type="checkbox" /> <span data-i18n="sig.remember">Guardar para reutilizar en este dispositivo</span></label>
         <div class="dialog-actions">
-          <button id="signatureClearBtn" class="btn-secondary">Borrar</button>
-          <button id="signatureCancelBtn" class="btn-secondary">Cancelar</button>
-          <button id="signatureUseSavedBtn" class="btn-secondary hidden">Usar guardada</button>
-          <button id="signatureInsertBtn" class="btn-primary">Insertar firma</button>
+          <button id="signatureClearBtn" class="btn-secondary" data-i18n="common.clear">Borrar</button>
+          <button id="signatureCancelBtn" class="btn-secondary" data-i18n="common.cancel">Cancelar</button>
+          <button id="signatureUseSavedBtn" class="btn-secondary hidden" data-i18n="sig.useSaved">Usar guardada</button>
+          <button id="signatureInsertBtn" class="btn-primary" data-i18n="sig.insert">Insertar firma</button>
         </div>
       </div>
     </div>
 
     <div id="textAnnotateModal" class="dialog-backdrop hidden">
       <div class="dialog">
-        <p id="textAnnotateTitle">Añadir texto</p>
-        <textarea id="textAnnotateInput" class="text-annotate-input" maxlength="200" rows="3" placeholder="Escribe el texto…"></textarea>
+        <p id="textAnnotateTitle" data-i18n="ann.addTextTitle">Añadir texto</p>
+        <textarea id="textAnnotateInput" class="text-annotate-input" maxlength="200" rows="3" placeholder="Escribe el texto…" data-i18n-placeholder="ann.textPlaceholder"></textarea>
         <div class="dialog-actions">
-          <button id="textAnnotateCancelBtn" class="btn-secondary">Cancelar</button>
-          <button id="textAnnotateConfirmBtn" class="btn-primary">Listo</button>
+          <button id="textAnnotateCancelBtn" class="btn-secondary" data-i18n="common.cancel">Cancelar</button>
+          <button id="textAnnotateConfirmBtn" class="btn-primary" data-i18n="common.done">Listo</button>
         </div>
       </div>
     </div>
@@ -447,17 +465,17 @@
   <nav class="bottom-nav">
     <button class="nav-btn nav-active" data-nav="view-home">
       <svg viewBox="0 0 24 24" width="21" height="21"><path d="M4 11.5 12 4l8 7.5M6 10v9.5h5V15h2v4.5h5V10" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round"/></svg>
-      <span>Inicio</span>
+      <span data-i18n="nav.home">Inicio</span>
     </button>
     <button class="nav-btn" data-action="scan-now">
       <span class="nav-fab">
         <svg viewBox="0 0 24 24" width="22" height="22"><circle cx="12" cy="12" r="3.4" fill="none" stroke="#0B0E1A" stroke-width="1.8"/><path d="M4 8.5A2 2 0 0 1 6 6.5h1.4l.9-1.4A1.3 1.3 0 0 1 9.4 4.5h5.2a1.3 1.3 0 0 1 1.1.6l.9 1.4H18a2 2 0 0 1 2 2v8.7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8.5Z" fill="none" stroke="#0B0E1A" stroke-width="1.8"/></svg>
       </span>
-      <span>Escanear</span>
+      <span data-i18n="nav.scan">Escanear</span>
     </button>
     <button class="nav-btn" data-nav="view-review">
       <svg viewBox="0 0 24 24" width="21" height="21"><rect x="5" y="3" width="14" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="1.7"/><path d="M8 8h8M8 12h8M8 16h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-      <span>Documento</span>
+      <span data-i18n="nav.document">Documento</span>
     </button>
   </nav>
 </div>
@@ -470,13 +488,14 @@
   <div class="dialog">
     <p id="confirmMessage">¿Confirmar acción?</p>
     <div class="dialog-actions">
-      <button id="confirmCancel" class="btn-secondary">Cancelar</button>
-      <button id="confirmOk" class="btn-primary btn-danger">Confirmar</button>
+      <button id="confirmCancel" class="btn-secondary" data-i18n="common.cancel">Cancelar</button>
+      <button id="confirmOk" class="btn-primary btn-danger" data-i18n="common.confirm">Confirmar</button>
     </div>
   </div>
 </div>
 
 <script src="js/vendor/jspdf.umd.min.js"></script>
+<script src="js/i18n.js"></script>
 <script src="js/db.js"></script>
 <script src="js/edgeDetector.js"></script>
 <script src="js/imageProcessing.js"></script>
