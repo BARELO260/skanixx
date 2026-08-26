@@ -137,13 +137,6 @@
     return c;
   }
 
-  function cloneCanvas(src) {
-    const c = document.createElement("canvas");
-    c.width = src.width; c.height = src.height;
-    c.getContext("2d").drawImage(src, 0, 0);
-    return c;
-  }
-
   /* ---------------------------------------------------------------
    * View router
    * --------------------------------------------------------------- */
@@ -451,35 +444,39 @@
   const SAFE_CANVAS_AREA = 15000000;
 
   function renderPage(page, maxDim = 1600) {
-    let src = page.base;
-    // rotation
-    if (page.rotation % 360 !== 0) {
-      const rad = (page.rotation * Math.PI) / 180;
-      const swap = page.rotation % 180 !== 0;
-      const w = swap ? src.height : src.width;
-      const h = swap ? src.width : src.height;
-      const rc = document.createElement("canvas");
-      rc.width = w; rc.height = h;
-      const rctx = rc.getContext("2d");
-      rctx.translate(w / 2, h / 2);
-      rctx.rotate(rad);
-      rctx.drawImage(src, -src.width / 2, -src.height / 2);
-      src = rc;
-    }
-    // downscale for performance/safety if huge
+    const srcW = page.base.width, srcH = page.base.height;
+    const rotated = page.rotation % 360 !== 0;
+    const swap = rotated && page.rotation % 180 !== 0;
+    const finalW = swap ? srcH : srcW;
+    const finalH = swap ? srcW : srcH;
+
+    // Scale is computed against the POST-rotation shape (that's the shape
+    // maxDim is meant to constrain), then baked directly into the single
+    // drawImage below instead of rotating page.base at full native
+    // resolution and downscaling afterward. For any rotated page that used
+    // to mean paying the cost of an expensive full-resolution rotation
+    // pass on every single call — and this function runs very frequently
+    // (live edit preview on every slider tweak, thumbnails, export) —
+    // purely to immediately throw most of that detail away in the very
+    // next step. One scaled+rotated draw produces the same pixels, since
+    // nothing downstream ever needed detail finer than maxDim.
     let scale = 1;
-    if (Math.max(src.width, src.height) > maxDim) {
-      scale = maxDim / Math.max(src.width, src.height);
-    }
-    const projectedArea = src.width * scale * (src.height * scale);
-    if (projectedArea > SAFE_CANVAS_AREA) {
-      scale *= Math.sqrt(SAFE_CANVAS_AREA / projectedArea);
-    }
+    if (Math.max(finalW, finalH) > maxDim) scale = maxDim / Math.max(finalW, finalH);
+    const projectedArea = (finalW * scale) * (finalH * scale);
+    if (projectedArea > SAFE_CANVAS_AREA) scale *= Math.sqrt(SAFE_CANVAS_AREA / projectedArea);
+
     const out = document.createElement("canvas");
-    out.width = Math.round(src.width * scale);
-    out.height = Math.round(src.height * scale);
+    out.width = Math.max(1, Math.round(finalW * scale));
+    out.height = Math.max(1, Math.round(finalH * scale));
     const octx = out.getContext("2d");
-    octx.drawImage(src, 0, 0, out.width, out.height);
+    if (rotated) {
+      const rad = (page.rotation * Math.PI) / 180;
+      octx.translate(out.width / 2, out.height / 2);
+      octx.rotate(rad);
+      octx.drawImage(page.base, -(srcW * scale) / 2, -(srcH * scale) / 2, srcW * scale, srcH * scale);
+    } else {
+      octx.drawImage(page.base, 0, 0, out.width, out.height);
+    }
 
     const imgData = octx.getImageData(0, 0, out.width, out.height);
     ImageProcessing.applyFilter(imgData, page.filter);
@@ -498,29 +495,29 @@
   }
 
   function renderPageForOcr(page, maxDim = 2400) {
-    let src = page.base;
-    if (page.rotation % 360 !== 0) {
-      const rad = (page.rotation * Math.PI) / 180;
-      const swap = page.rotation % 180 !== 0;
-      const w = swap ? src.height : src.width;
-      const h = swap ? src.width : src.height;
-      const rc = document.createElement("canvas");
-      rc.width = w; rc.height = h;
-      const rctx = rc.getContext("2d");
-      rctx.translate(w / 2, h / 2);
-      rctx.rotate(rad);
-      rctx.drawImage(src, -src.width / 2, -src.height / 2);
-      src = rc;
-    }
+    const srcW = page.base.width, srcH = page.base.height;
+    const rotated = page.rotation % 360 !== 0;
+    const swap = rotated && page.rotation % 180 !== 0;
+    const finalW = swap ? srcH : srcW;
+    const finalH = swap ? srcW : srcH;
+
+    // Same single-pass scale+rotate as renderPage above — avoids rotating
+    // at full sensor resolution before immediately downscaling to maxDim.
     let scale = 1;
-    if (Math.max(src.width, src.height) > maxDim) {
-      scale = maxDim / Math.max(src.width, src.height);
-    }
+    if (Math.max(finalW, finalH) > maxDim) scale = maxDim / Math.max(finalW, finalH);
+
     const out = document.createElement("canvas");
-    out.width = Math.round(src.width * scale);
-    out.height = Math.round(src.height * scale);
+    out.width = Math.max(1, Math.round(finalW * scale));
+    out.height = Math.max(1, Math.round(finalH * scale));
     const octx = out.getContext("2d");
-    octx.drawImage(src, 0, 0, out.width, out.height);
+    if (rotated) {
+      const rad = (page.rotation * Math.PI) / 180;
+      octx.translate(out.width / 2, out.height / 2);
+      octx.rotate(rad);
+      octx.drawImage(page.base, -(srcW * scale) / 2, -(srcH * scale) / 2, srcW * scale, srcH * scale);
+    } else {
+      octx.drawImage(page.base, 0, 0, out.width, out.height);
+    }
 
     const imgData = octx.getImageData(0, 0, out.width, out.height);
     ImageProcessing.prepareForOcr(imgData);
@@ -1194,7 +1191,24 @@
 
   const FILTER_THUMB_SIZE = 84;
   function renderFilterThumbnails(page) {
+    const S = FILTER_THUMB_SIZE;
+    // Downscale to a modest working size *before* rotating, not after.
+    // This used to rotate page.base at its full captured resolution (now
+    // up to the sensor's native size, several megapixels) purely to throw
+    // away everything except an 84x84 crop — real, avoidable work paid on
+    // every entry into the edit view. THUMB_WORKING_SIZE gives comfortable
+    // headroom for the rotation + center-crop below while costing a small
+    // fraction of what rotating the full image did.
+    const THUMB_WORKING_SIZE = 240;
+    const baseScale = Math.min(1, THUMB_WORKING_SIZE / Math.max(page.base.width, page.base.height));
     let src = page.base;
+    if (baseScale < 1) {
+      const small = document.createElement("canvas");
+      small.width = Math.max(1, Math.round(page.base.width * baseScale));
+      small.height = Math.max(1, Math.round(page.base.height * baseScale));
+      small.getContext("2d").drawImage(page.base, 0, 0, small.width, small.height);
+      src = small;
+    }
     if (page.rotation % 360 !== 0) {
       const rad = (page.rotation * Math.PI) / 180;
       const swap = page.rotation % 180 !== 0;
@@ -1212,7 +1226,6 @@
     // (text/texture), not letterboxed empty margins.
     const side = Math.min(src.width, src.height);
     const sx = (src.width - side) / 2, sy = (src.height - side) / 2;
-    const S = FILTER_THUMB_SIZE;
     const base = document.createElement("canvas");
     base.width = S; base.height = S;
     const bctx = base.getContext("2d");
