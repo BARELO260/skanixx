@@ -5,7 +5,6 @@
  */
 const SoundFX = (() => {
   let ctx = null;
-  let enabled = true;
 
   function ensureCtx() {
     if (!ctx) {
@@ -16,7 +15,6 @@ const SoundFX = (() => {
   }
 
   function shutter() {
-    if (!enabled) return;
     const ac = ensureCtx();
     if (!ac) return;
     if (ac.state === "suspended") ac.resume();
@@ -49,8 +47,5 @@ const SoundFX = (() => {
     });
   }
 
-  function setEnabled(v) { enabled = v; }
-  function isEnabled() { return enabled; }
-
-  return { shutter, setEnabled, isEnabled };
+  return { shutter };
 })();
