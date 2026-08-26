@@ -13,12 +13,13 @@
  */
 // Bumped with the edge-detection runtime so installed/offline clients do
 // not retain a previous camera pipeline after an update.
-const CACHE_NAME = "skanix-shell-v6";
+const CACHE_NAME = "skanix-shell-v7";
 const SHELL_ASSETS = [
   "./",
   "./index.html",
   "./manifest.json",
   "./css/styles.css",
+  "./js/i18n.js",
   "./js/app.js",
   "./js/camera.js",
   "./js/db.js",
