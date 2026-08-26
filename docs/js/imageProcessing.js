@@ -55,24 +55,6 @@ const ImageProcessing = (() => {
     return M.map((row) => row[n]);
   }
 
-  function invertHomography(H) {
-    // Invert the 3x3 matrix H (row-major, 9 values)
-    const [a, b, c, d, e, f, g, h, i] = H;
-    const A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g;
-    const D = -(b * i - c * h), E = a * i - c * g, F = -(a * h - b * g);
-    const G = b * f - c * e, Hh = -(a * f - c * d), I = a * e - b * d;
-    const det = a * A + b * B + c * C || 1e-12;
-    return [A / det, D / det, G / det, B / det, E / det, Hh / det, C / det, F / det, I / det];
-  }
-
-  function applyH(H, x, y) {
-    const w = H[6] * x + H[7] * y + H[8];
-    return {
-      x: (H[0] * x + H[1] * y + H[2]) / w,
-      y: (H[3] * x + H[4] * y + H[5]) / w,
-    };
-  }
-
   /**
    * warpPerspective — flattens the quadrilateral `corners` (TL,TR,BR,BL,
    * in source pixel coordinates) from `srcCanvas` into a new canvas sized
@@ -103,10 +85,22 @@ const ImageProcessing = (() => {
 
     const sPix = srcData.data, oPix = outData.data;
 
+    // Inlined instead of calling applyH(H, x, y) per pixel: that call
+    // allocated a fresh {x, y} object on every iteration of this loop —
+    // up to millions of times for a full-resolution capture (this app now
+    // captures at the sensor's native resolution, previously capped much
+    // lower). That's millions of tiny object allocations feeding the
+    // garbage collector during the single most performance-sensitive
+    // moment in the app: the crop-confirm -> edit-view transition, which
+    // runs synchronously on the main thread and was very noticeably
+    // contributing to "the app feels slow". Same math, no per-pixel
+    // allocation.
+    const h0 = H[0], h1 = H[1], h2 = H[2], h3 = H[3], h4 = H[4], h5 = H[5], h6 = H[6], h7 = H[7], h8 = H[8];
     for (let y = 0; y < outH; y++) {
       for (let x = 0; x < outW; x++) {
-        const p = applyH(H, x, y);
-        const sx = p.x, sy = p.y;
+        const w = h6 * x + h7 * y + h8;
+        const sx = (h0 * x + h1 * y + h2) / w;
+        const sy = (h3 * x + h4 * y + h5) / w;
         const oi = (y * outW + x) * 4;
         if (sx < 0 || sy < 0 || sx >= sw - 1 || sy >= sh - 1) {
           oPix[oi + 3] = 0;
