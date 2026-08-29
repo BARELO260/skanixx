@@ -203,24 +203,33 @@ const ImageProcessing = (() => {
       case "document": {
         // Boost contrast + lighten background toward white while keeping ink dark.
         for (let i = 0; i < d.length; i += 4) {
-          let l = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-          l = clamp((l - 120) * 2.1 + 150); // strong S-curve toward paper white
-          const r = clamp(d[i] + (l - (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2])) * 0.9);
-          const g = clamp(d[i + 1] + (l - (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2])) * 0.9);
-          const b = clamp(d[i + 2] + (l - (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2])) * 0.9);
-          d[i] = r; d[i + 1] = g; d[i + 2] = b;
+          // Original code recomputed 0.299*r+0.587*g+0.114*b three extra
+          // times per pixel (once for the S-curve input, then again for
+          // each of r/g/b's delta) — same deterministic value every time,
+          // just wasted work. Computing it once and reusing it is
+          // mathematically identical, ~4x fewer weighted-sum ops here,
+          // in what's likely the most-used filter in a document scanner.
+          const origLum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+          const targetLum = clamp((origLum - 120) * 2.1 + 150); // strong S-curve toward paper white
+          const delta = (targetLum - origLum) * 0.9;
+          d[i] = clamp(d[i] + delta);
+          d[i + 1] = clamp(d[i + 1] + delta);
+          d[i + 2] = clamp(d[i + 2] + delta);
         }
         return imageData;
       }
       case "color": {
         for (let i = 0; i < d.length; i += 4) {
           const lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
-          for (const k of [0, 1, 2]) {
-            let v = d[i + k];
-            v = lum + (v - lum) * 1.35; // saturate
-            v = (v - 128) * 1.12 + 128 + 6; // contrast + slight brighten
-            d[i + k] = clamp(v);
-          }
+          // Unrolled instead of `for (const k of [0,1,2])`: that allocated
+          // a fresh 3-element array plus an iterator on every single
+          // pixel purely to index 3 fixed channels. Same math, no
+          // per-pixel allocation.
+          let r = d[i], g = d[i + 1], b = d[i + 2];
+          r = lum + (r - lum) * 1.35; r = (r - 128) * 1.12 + 128 + 6; // saturate, then contrast + slight brighten
+          g = lum + (g - lum) * 1.35; g = (g - 128) * 1.12 + 128 + 6;
+          b = lum + (b - lum) * 1.35; b = (b - 128) * 1.12 + 128 + 6;
+          d[i] = clamp(r); d[i + 1] = clamp(g); d[i + 2] = clamp(b);
         }
         return imageData;
       }
@@ -272,7 +281,7 @@ const ImageProcessing = (() => {
   function sharpen(imageData) {
     const { width: w, height: h, data: src } = imageData;
     const out = new Uint8ClampedArray(src.length);
-    const kernel = [0, -1, 0, -1, 5.4, -1, 0, -1, 0];
+    const stride = w * 4;
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
         const idx = (y * w + x) * 4;
@@ -280,14 +289,16 @@ const ImageProcessing = (() => {
           out[idx] = src[idx]; out[idx + 1] = src[idx + 1]; out[idx + 2] = src[idx + 2]; out[idx + 3] = src[idx + 3];
           continue;
         }
+        // The kernel is [0,-1,0, -1,5.4,-1, 0,-1,0] — a "plus" shape, not a
+        // full 3x3: all 4 corners carry weight 0. The original loop still
+        // indexed, read, and multiplied-by-zero those 4 corner taps for
+        // every channel of every non-border pixel — real work (~4 of 9
+        // multiply-adds, plus their address math) that could only ever
+        // contribute 0. Reading only the 5 taps that actually have
+        // nonzero weight produces exactly the same sum.
         for (let ch = 0; ch < 3; ch++) {
-          let sum = 0, k = 0;
-          for (let ky = -1; ky <= 1; ky++) {
-            for (let kx = -1; kx <= 1; kx++) {
-              const i = ((y + ky) * w + (x + kx)) * 4 + ch;
-              sum += src[i] * kernel[k++];
-            }
-          }
+          const i = idx + ch;
+          const sum = 5.4 * src[i] - src[i - stride] - src[i + stride] - src[i - 4] - src[i + 4];
           out[idx + ch] = clamp(sum);
         }
         out[idx + 3] = src[idx + 3];
