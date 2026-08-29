@@ -1,0 +1,23 @@
+{
+  "name": "skanix",
+  "version": "1.0.0",
+  "description": "Skanix — escáner de documentos offline-first.",
+  "private": true,
+  "scripts": {
+    "start": "npx serve docs -l 8080",
+    "cap:add:android": "npx cap add android",
+    "cap:sync": "npx cap sync",
+    "cap:android": "npx cap open android",
+    "cap:ios": "npx cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/app": "^8.0.0",
+    "@capacitor/core": "^8.0.0",
+    "@capacitor/ios": "^8.0.0",
+    "@capacitor/status-bar": "^8.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.0.0"
+  }
+}
