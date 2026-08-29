@@ -338,12 +338,25 @@ const EdgeDetector = (() => {
       }
     }
     const out = new Float32Array(w * h);
-    for (let x = 0; x < w; x++) {
-      for (let y = 0; y < h; y++) {
-        const y0 = Math.max(0, y - 1), y1 = Math.min(h - 1, y + 1);
+    // Same vertical-sum math as before, but with y as the outer loop and x
+    // as the inner one instead of the reverse. For a fixed x the original
+    // order jumped by a full row (`w` elements, ~900 bytes for this app's
+    // 224px-wide analysis frame) on every single read — worse than a
+    // typical CPU cache line, so almost every access missed cache. With x
+    // innermost, each of the (at most 3) source rows in the vertical
+    // window is instead scanned left-to-right, which is exactly the
+    // sequential-access pattern hardware prefetchers are built for. Same
+    // floating-point sum, same order of addition, identical output — just
+    // faster to compute. This runs on every single detection tick for as
+    // long as the camera view is open, several times a second.
+    for (let y = 0; y < h; y++) {
+      const y0 = Math.max(0, y - 1), y1 = Math.min(h - 1, y + 1);
+      const rowCount = y1 - y0 + 1;
+      const row = y * w;
+      for (let x = 0; x < w; x++) {
         let sum = 0;
         for (let yy = y0; yy <= y1; yy++) sum += tmp[yy * w + x];
-        out[y * w + x] = sum / (y1 - y0 + 1);
+        out[row + x] = sum / rowCount;
       }
     }
     return out;
