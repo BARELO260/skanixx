@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Skanix — Política de Privacidad / Privacy Policy</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    max-width: 760px; margin: 0 auto; padding: 32px 20px 80px;
+    line-height: 1.6; color: #1a1a1a; background: #fff;
+  }
+  h1 { font-size: 1.6em; margin-bottom: 4px; }
+  h2 { font-size: 1.2em; margin-top: 2.2em; border-top: 1px solid #e2e2e2; padding-top: 1.2em; }
+  .updated { color: #666; font-size: 0.9em; margin-bottom: 2em; }
+  .lang-switch { margin: 8px 0 2em; font-size: 0.95em; }
+  .lang-switch a { margin-right: 12px; }
+  ul { padding-left: 1.3em; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; font-size: 0.95em; }
+  th, td { border: 1px solid #ddd; padding: 8px 10px; text-align: left; vertical-align: top; }
+  th { background: #f5f5f5; }
+  code { background: #f0f0f0; padding: 1px 5px; border-radius: 4px; font-size: 0.9em; }
+  section[lang="en"] { display: none; }
+  body.show-en section[lang="es"] { display: none; }
+  body.show-en section[lang="en"] { display: block; }
+  footer { margin-top: 3em; color: #777; font-size: 0.85em; }
+</style>
+</head>
+<body>
+
+<div class="lang-switch">
+  <a href="index.html">&larr; Volver a Skanix</a> &nbsp;·&nbsp;
+  <a href="#" onclick="document.body.classList.remove('show-en'); return false;">Español</a>
+  <a href="#" onclick="document.body.classList.add('show-en'); return false;">English</a>
+</div>
+
+<section lang="es">
+<h1>Política de Privacidad de Skanix</h1>
+<p class="updated">Última actualización: 29 de agosto de 2026</p>
+
+<p>Skanix ("la app", "nosotros") es una aplicación de escaneo de documentos. Esta política explica, de forma clara y completa, qué datos toca la app y qué hacemos con ellos.</p>
+
+<h2>Resumen</h2>
+<ul>
+  <li><strong>Tus documentos nunca salen de tu dispositivo</strong>, salvo que tú mismo elijas compartirlos o exportarlos usando el propio sistema para compartir de tu teléfono.</li>
+  <li>El reconocimiento de texto (OCR) se procesa <strong>enteramente en tu dispositivo</strong>, sin conexión.</li>
+  <li>La única función que envía datos a un servicio externo es <strong>"Traducir"</strong> (dentro del panel de texto extraído), y solo envía el texto que tú decidas traducir — nunca la imagen del documento.</li>
+  <li>No usamos publicidad, no usamos rastreadores de analítica, no usamos identificadores publicitarios, y no vendemos ni compartimos datos con terceros para fines comerciales.</li>
+  <li>No se requiere crear una cuenta ni iniciar sesión para usar la app.</li>
+</ul>
+
+<h2>Qué datos procesa la app</h2>
+<table>
+  <tr><th>Dato</th><th>Cómo se usa</th><th>¿Dónde se guarda?</th></tr>
+  <tr>
+    <td>Acceso a la cámara</td>
+    <td>Para fotografiar documentos. Solo se activa cuando tú abres la pantalla de escaneo.</td>
+    <td>No se guarda ningún flujo de video; solo la foto que tú decides capturar.</td>
+  </tr>
+  <tr>
+    <td>Imágenes/fotos que subes desde tu galería</td>
+    <td>Como alternativa a la cámara, para escanear una imagen ya existente.</td>
+    <td>Localmente en el dispositivo (ver abajo).</td>
+  </tr>
+  <tr>
+    <td>Documentos escaneados (imágenes, recortes, anotaciones, texto extraído)</td>
+    <td>Es el contenido que tú creas con la app.</td>
+    <td><strong>Únicamente en el almacenamiento local del dispositivo</strong> (IndexedDB del navegador/WebView). Skanix no tiene servidor propio ni sincroniza tus documentos a ningún lugar.</td>
+  </tr>
+  <tr>
+    <td>Texto extraído por OCR</td>
+    <td>Se reconoce con Tesseract.js, una librería que corre completamente en tu dispositivo (offline, sin conexión a internet).</td>
+    <td>Localmente, junto con el documento.</td>
+  </tr>
+  <tr>
+    <td>Texto que envías a traducir</td>
+    <td>Si usas el botón "Traducir", el texto (no la imagen) se envía a un servicio externo de traducción para obtener la traducción.</td>
+    <td>No lo almacenamos nosotros; se transmite directamente desde tu dispositivo al servicio de traducción. Ver la sección siguiente.</td>
+  </tr>
+</table>
+
+<h2>Servicios de terceros que usamos</h2>
+<p>Skanix usa servicios públicos de traducción automática únicamente cuando usas la función "Traducir": primero intenta con el servicio de traducción de Google, y si no está disponible, con MyMemory Translated. En ambos casos se envía <strong>solo el texto a traducir</strong>, nunca imágenes, nombres de archivo ni ningún otro dato personal identificable. No tenemos control sobre las políticas de privacidad de estos servicios externos; te recomendamos revisarlas si te preocupa el contenido específico que traduces.</p>
+<p>Skanix no incluye SDKs de publicidad, analítica, atribución ni recolección de datos de ningún tipo. No usamos cookies de rastreo.</p>
+
+<h2>Permisos que solicita la app</h2>
+<ul>
+  <li><strong>Cámara:</strong> para fotografiar documentos. Puedes usar la app sin conceder este permiso subiendo imágenes desde tu galería en su lugar.</li>
+  <li><strong>Internet:</strong> únicamente usado por la función de traducción descrita arriba, y para cargar el motor de OCR la primera vez que lo usas (después queda disponible sin conexión).</li>
+</ul>
+<p>Skanix no solicita acceso a tu ubicación, contactos, micrófono, ni a tus archivos más allá de las imágenes que tú eliges compartir con la app a través del selector estándar del sistema.</p>
+
+<h2>Eliminación de tus datos</h2>
+<p>Como todo se guarda localmente en tu dispositivo, puedes eliminar tus documentos en cualquier momento desde la propia app (botón "Eliminar documento" o "Vaciar historial"), o desinstalando la aplicación, lo que borra toda la información almacenada por Skanix de forma inmediata y permanente. No conservamos copias en ningún servidor, porque nunca las recibimos.</p>
+
+<h2>Menores de edad</h2>
+<p>Skanix no está dirigida a niños y no recolecta a sabiendas información de menores de edad, dado que no recolectamos información personal de ningún usuario.</p>
+
+<h2>Cambios a esta política</h2>
+<p>Si actualizamos esta política, publicaremos la nueva versión en esta misma página con una fecha de actualización revisada.</p>
+
+<h2>Contacto</h2>
+<p>Si tienes preguntas sobre esta política, escríbenos a: <code>[correo de soporte pendiente]</code></p>
+</section>
+
+<section lang="en">
+<h1>Skanix Privacy Policy</h1>
+<p class="updated">Last updated: August 29, 2026</p>
+
+<p>Skanix ("the app", "we") is a document-scanning application. This policy explains, plainly and completely, what data the app touches and what we do with it.</p>
+
+<h2>Summary</h2>
+<ul>
+  <li><strong>Your documents never leave your device</strong>, unless you yourself choose to share or export them using your phone's own share sheet.</li>
+  <li>Text recognition (OCR) is processed <strong>entirely on your device</strong>, offline.</li>
+  <li>The only feature that sends data to an external service is <strong>"Translate"</strong> (inside the extracted-text panel), and it only sends the text you choose to translate — never the document image.</li>
+  <li>We do not use advertising, analytics trackers, or advertising identifiers, and we do not sell or share data with third parties for commercial purposes.</li>
+  <li>No account or sign-in is required to use the app.</li>
+</ul>
+
+<h2>What data the app processes</h2>
+<table>
+  <tr><th>Data</th><th>How it's used</th><th>Where it's stored</th></tr>
+  <tr>
+    <td>Camera access</td>
+    <td>To photograph documents. Only activated when you open the scan screen.</td>
+    <td>No video stream is ever saved; only the photo you choose to capture.</td>
+  </tr>
+  <tr>
+    <td>Photos you upload from your gallery</td>
+    <td>As an alternative to the camera, to scan an existing image.</td>
+    <td>Locally on the device (see below).</td>
+  </tr>
+  <tr>
+    <td>Scanned documents (images, crops, annotations, extracted text)</td>
+    <td>This is the content you create with the app.</td>
+    <td><strong>Only in the device's local storage</strong> (browser/WebView IndexedDB). Skanix has no server of its own and does not sync your documents anywhere.</td>
+  </tr>
+  <tr>
+    <td>Text extracted by OCR</td>
+    <td>Recognized with Tesseract.js, a library that runs entirely on your device (offline, no internet connection required).</td>
+    <td>Locally, alongside the document.</td>
+  </tr>
+  <tr>
+    <td>Text you send to be translated</td>
+    <td>If you use the "Translate" button, the text (not the image) is sent to an external translation service to get the translation.</td>
+    <td>We do not store it ourselves; it is transmitted directly from your device to the translation service. See the next section.</td>
+  </tr>
+</table>
+
+<h2>Third-party services we use</h2>
+<p>Skanix uses public machine-translation services only when you use the "Translate" feature: it first tries Google's translation service, and falls back to MyMemory Translated if that's unavailable. In both cases, only the <strong>text to be translated</strong> is sent — never images, filenames, or any other personally identifying data. We have no control over these external services' own privacy policies; we recommend reviewing them if you're concerned about the specific content you translate.</p>
+<p>Skanix includes no advertising, analytics, attribution, or data-collection SDKs of any kind. We do not use tracking cookies.</p>
+
+<h2>Permissions the app requests</h2>
+<ul>
+  <li><strong>Camera:</strong> to photograph documents. You can use the app without granting this permission by uploading images from your gallery instead.</li>
+  <li><strong>Internet:</strong> used only for the translation feature described above, and to download the OCR engine the first time you use it (it's available offline afterward).</li>
+</ul>
+<p>Skanix does not request access to your location, contacts, microphone, or any files beyond the images you choose to share with the app through the system's standard picker.</p>
+
+<h2>Deleting your data</h2>
+<p>Since everything is stored locally on your device, you can delete your documents at any time from within the app ("Delete document" or "Clear history"), or by uninstalling the app, which immediately and permanently erases all data Skanix has stored. We keep no copies on any server, because we never receive them.</p>
+
+<h2>Children</h2>
+<p>Skanix is not directed at children and does not knowingly collect information from minors, since we do not collect personal information from any user.</p>
+
+<h2>Changes to this policy</h2>
+<p>If we update this policy, we will publish the new version on this same page with a revised update date.</p>
+
+<h2>Contact</h2>
+<p>If you have questions about this policy, contact us at: <code>[support email pending]</code></p>
+</section>
+
+<footer>Skanix</footer>
+</body>
+</html>
