@@ -45,6 +45,7 @@ const I18n = (() => {
       "home.searchPlaceholder": "Buscar por nombre o texto del documento…",
       "home.emptyHint": "Aún no has escaneado ningún documento. Tus escaneos aparecerán aquí, guardados en este dispositivo.",
       "home.footnote": "Skanix convierte cualquier papel en un PDF nítido en segundos — todo ocurre en tu dispositivo, incluso sin conexión.",
+      "home.privacyLink": "Política de privacidad",
 
       "camera.searching": "Buscando…",
       "camera.locked": "Listo",
@@ -204,6 +205,7 @@ const I18n = (() => {
       "home.searchPlaceholder": "Search by document name or text…",
       "home.emptyHint": "You haven't scanned any documents yet. Your scans will appear here, saved on this device.",
       "home.footnote": "Skanix turns any paper into a crisp PDF in seconds — it all happens on your device, even offline.",
+      "home.privacyLink": "Privacy policy",
 
       "camera.searching": "Searching…",
       "camera.locked": "Ready",
@@ -363,6 +365,7 @@ const I18n = (() => {
       "home.searchPlaceholder": "Buscar por nome ou texto do documento…",
       "home.emptyHint": "Você ainda não digitalizou nenhum documento. Suas digitalizações aparecerão aqui, salvas neste dispositivo.",
       "home.footnote": "O Skanix transforma qualquer papel em um PDF nítido em segundos — tudo acontece no seu dispositivo, mesmo offline.",
+      "home.privacyLink": "Política de privacidade",
 
       "camera.searching": "Procurando…",
       "camera.locked": "Pronto",
@@ -522,6 +525,7 @@ const I18n = (() => {
       "home.searchPlaceholder": "Rechercher par nom ou texte du document…",
       "home.emptyHint": "Vous n'avez encore scanné aucun document. Vos scans apparaîtront ici, enregistrés sur cet appareil.",
       "home.footnote": "Skanix transforme n'importe quel papier en PDF net en quelques secondes — tout se passe sur votre appareil, même hors ligne.",
+      "home.privacyLink": "Politique de confidentialité",
 
       "camera.searching": "Recherche…",
       "camera.locked": "Prêt",
@@ -681,6 +685,7 @@ const I18n = (() => {
       "home.searchPlaceholder": "Nach Name oder Dokumenttext suchen…",
       "home.emptyHint": "Du hast noch keine Dokumente gescannt. Deine Scans erscheinen hier, gespeichert auf diesem Gerät.",
       "home.footnote": "Skanix verwandelt jedes Papier in Sekunden in ein gestochen scharfes PDF — alles direkt auf deinem Gerät, auch offline.",
+      "home.privacyLink": "Datenschutzerklärung",
 
       "camera.searching": "Suche…",
       "camera.locked": "Bereit",
