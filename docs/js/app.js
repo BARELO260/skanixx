@@ -327,18 +327,26 @@
       const locked = stableStreak >= STABLE_NEEDED;
       const color = locked ? "#4ADE80" : "#22D3EE";
       overlayCtx.lineJoin = "round";
-      overlayCtx.lineWidth = 3;
-      overlayCtx.strokeStyle = color;
-      overlayCtx.fillStyle = locked ? "rgba(74,222,128,0.14)" : "rgba(34,211,238,0.10)";
-      overlayCtx.shadowColor = color;
-      overlayCtx.shadowBlur = 10;
       overlayCtx.beginPath();
       overlayCtx.moveTo(pts[0].x, pts[0].y);
       for (let i = 1; i < 4; i++) overlayCtx.lineTo(pts[i].x, pts[i].y);
       overlayCtx.closePath();
+      overlayCtx.fillStyle = locked ? "rgba(74,222,128,0.14)" : "rgba(34,211,238,0.10)";
       overlayCtx.fill();
+      // A soft "glow" here used to come from overlayCtx.shadowBlur, which
+      // browsers implement as an actual per-pixel blur pass — real work
+      // repeated on every one of this loop's 60 frames per second for as
+      // long as the camera view stays open, not just while actively
+      // detecting. A wide, translucent stroke underneath a crisp one on
+      // top gives a comparable glow using only two plain stroke paints,
+      // which is dramatically cheaper on mobile GPUs/CPUs.
+      overlayCtx.strokeStyle = color;
+      overlayCtx.globalAlpha = 0.35;
+      overlayCtx.lineWidth = 9;
       overlayCtx.stroke();
-      overlayCtx.shadowBlur = 0;
+      overlayCtx.globalAlpha = 1;
+      overlayCtx.lineWidth = 3;
+      overlayCtx.stroke();
       pts.forEach((p) => {
         overlayCtx.beginPath();
         overlayCtx.arc(p.x, p.y, 5, 0, Math.PI * 2);
@@ -556,9 +564,20 @@
     const stepY = fontSize * 3.2;
     ctx.translate(W / 2, H / 2);
     ctx.rotate(angle);
-    const span = Math.ceil((Math.hypot(W, H)) / Math.min(stepX, stepY)) + 2;
-    for (let row = -span; row <= span; row++) {
-      for (let col = -span; col <= span; col++) {
+    // spanX/spanY are each sized to their own axis's spacing instead of
+    // both using Math.min(stepX, stepY) for a single shared span. Longer
+    // watermark text makes stepX (horizontal spacing) much larger than
+    // stepY — using the smaller one for both loop bounds meant the column
+    // count was computed as if columns were as tightly packed as rows,
+    // drawing several times more fillText calls than the canvas actually
+    // needed to be fully covered. Same tiling, same coverage guarantee
+    // (diag is still a generous bound for a rotated grid), far fewer
+    // fillText calls for typical watermark text.
+    const diag = Math.hypot(W, H);
+    const spanX = Math.ceil(diag / stepX) + 2;
+    const spanY = Math.ceil(diag / stepY) + 2;
+    for (let row = -spanY; row <= spanY; row++) {
+      for (let col = -spanX; col <= spanX; col++) {
         ctx.fillText(wm.text, col * stepX, row * stepY);
       }
     }
@@ -621,9 +640,23 @@
   }
 
   let historyCache = [];
+  // Reads from IndexedDB and renders. Use this whenever the underlying
+  // document set may have changed (page load, after save/delete/export,
+  // navigating back to the home view).
   async function renderHistory(query) {
-    const grid = $("#historyGrid");
     historyCache = await DocuDB.getAll();
+    renderHistoryFiltered(query);
+  }
+  // Renders from the already-loaded historyCache without touching
+  // IndexedDB. Typing in the search box used to call renderHistory() on
+  // every keystroke (debounced, but still) — re-reading every saved
+  // document, including every page's full-resolution base64 image data,
+  // from IndexedDB purely to filter by name/text that's already sitting in
+  // memory. That's real, visible jank while typing a search query. Nothing
+  // in the document set actually changes while searching, so filtering the
+  // in-memory list is both correct and dramatically cheaper.
+  function renderHistoryFiltered(query) {
+    const grid = $("#historyGrid");
     const q = (query ?? $("#historySearchInput")?.value ?? "").trim().toLowerCase();
     const docs = q
       ? historyCache.filter((d) =>
@@ -659,7 +692,7 @@
   $("#historySearchInput").addEventListener("input", (e) => {
     clearTimeout(historySearchDebounce);
     const val = e.target.value;
-    historySearchDebounce = setTimeout(() => renderHistory(val), 180);
+    historySearchDebounce = setTimeout(() => renderHistoryFiltered(val), 180);
   });
 
   function escapeHtml(s) {
@@ -685,10 +718,10 @@
   });
   $("#pendingReviewBtn").addEventListener("click", () => openReview());
   $("#clearHistoryBtn").addEventListener("click", async () => {
-    if (!(await confirmDialog("¿Vaciar todo el historial de documentos guardados? Esta acción no se puede deshacer."))) return;
+    if (!(await confirmDialog(I18n.t("confirm.clearHistory")))) return;
     await DocuDB.clear();
     renderHistory();
-    toast("Historial eliminado");
+    toast(I18n.t("toast.historyCleared"));
   });
 
   /* ---------------------------------------------------------------
@@ -1251,7 +1284,7 @@
     });
   }
 
-  async function renderEditCanvas() {
+  async function renderEditCanvas(updateThumbnails = true) {
     const token = ++editRenderToken;
     $("#editLoader").classList.remove("hidden");
     await new Promise((r) => requestAnimationFrame(r)); // let loader paint
@@ -1263,14 +1296,23 @@
     canvas.getContext("2d").drawImage(out, 0, 0);
     $("#editLoader").classList.add("hidden");
     Annotate.syncOverlaySize();
-    renderFilterThumbnails(p);
+    // Regenerating all 6 filter-chip thumbnails (each its own small
+    // render + JPEG encode) on every single call here used to compete with
+    // the main canvas redraw on every debounced tick while dragging a
+    // brightness/contrast/saturation slider — the exact moment fluidity
+    // matters most and the thumbnail strip isn't what the user is even
+    // looking at. Callers driving continuous slider input pass `false` and
+    // the strip catches up once, on release (see bindSlider's "change"
+    // handler below); every other caller (page load, rotate, filter pick,
+    // crop/transform, annotations) still refreshes it immediately as before.
+    if (updateThumbnails) renderFilterThumbnails(p);
   }
 
   function debounce(fn, ms) {
     let t;
     return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
   }
-  const debouncedRender = debounce(renderEditCanvas, 120);
+  const debouncedRender = debounce(() => renderEditCanvas(false), 120);
 
   $$(".edit-tab").forEach((tab) => {
     tab.addEventListener("click", () => {
@@ -1343,7 +1385,7 @@
     $("#rangeSaturation").value = saturation; $("#outSaturation").textContent = saturation;
     renderEditCanvas();
     scheduleAutosave();
-    toast("Mejora automática aplicada ✓", "success");
+    toast(I18n.t("toast.autoEnhanceApplied"), "success");
   });
 
   function bindSlider(rangeId, outId, prop) {
@@ -1353,7 +1395,13 @@
       State.activePage[prop] = Number(range.value);
       debouncedRender();
     });
-    range.addEventListener("change", scheduleAutosave);
+    range.addEventListener("change", () => {
+      // Slider released: catch the filter-chip thumbnail strip up to the
+      // final brightness/contrast/saturation values (skipped during the
+      // drag itself — see debouncedRender above).
+      renderFilterThumbnails(State.activePage);
+      scheduleAutosave();
+    });
   }
   bindSlider("#rangeBrightness", "#outBrightness", "brightness");
   bindSlider("#rangeContrast", "#outContrast", "contrast");
@@ -1417,7 +1465,7 @@
     } else {
       openReview();
     }
-    toast("Página añadida ✓", "success");
+    toast(I18n.t("toast.pageAdded"), "success");
   });
 
   /* ---------------------------------------------------------------
@@ -1604,10 +1652,10 @@
     $("#watermarkApplyBtn").addEventListener("click", () => {
       if (!page) return;
       const text = $("#watermarkText").value.trim();
-      if (!text) { toast("Escribe el texto de la marca de agua", "error"); return; }
+      if (!text) { toast(I18n.t("toast.watermarkTextRequired"), "error"); return; }
       page.watermark = { text, opacity: Number($("#watermarkOpacity").value) / 100, angle: Number($("#watermarkAngle").value) };
       renderEditCanvas(); scheduleAutosave();
-      toast("Marca de agua aplicada", "success");
+      toast(I18n.t("toast.watermarkApplied"), "success");
     });
     $("#watermarkRemoveBtn").addEventListener("click", () => {
       if (!page) return;
@@ -1728,11 +1776,11 @@
     }
     $("#signatureInsertBtn").addEventListener("click", async () => {
       const blank = await isCanvasBlank(Sig.canvas);
-      if (blank) { toast("Dibuja tu firma antes de insertarla", "error"); return; }
+      if (blank) { toast(I18n.t("toast.signatureRequired"), "error"); return; }
       const dataUrl = Sig.canvas.toDataURL("image/png");
       if ($("#signatureRemember").checked) {
         try { localStorage.setItem("skanix-saved-signature", dataUrl); }
-        catch (err) { toast("La firma se insertó, pero no se pudo guardar para reutilizarla", "error"); }
+        catch (err) { toast(I18n.t("toast.signatureSavedFailed"), "error"); }
       }
       await insertSignature(dataUrl);
     });
@@ -1815,7 +1863,7 @@
       }
     } catch (err) {
       console.error(err);
-      toast("No se pudo extraer el texto (se necesita conexión la primera vez)", "error");
+      toast(I18n.t("toast.ocrExtractFailed"), "error");
     } finally {
       btn.disabled = false;
       $("#ocrProgress").classList.add("hidden");
@@ -1842,7 +1890,7 @@
       downloadBlob(blob, `${($("#fileNameInput").value || "Documento").trim()}.docx`);
     } catch (err) {
       console.error(err);
-      toast("No se pudo generar el .docx", "error");
+      toast(I18n.t("toast.docxFailed"), "error");
     } finally {
       btn.disabled = false;
     }
@@ -1995,7 +2043,7 @@
   $("#reviewSelectDeleteBtn").addEventListener("click", async () => {
     if (reviewSelectedIds.size === 0) return;
     const n = reviewSelectedIds.size;
-    const ok = await confirmDialog(`¿Eliminar ${n} página${n === 1 ? "" : "s"} seleccionada${n === 1 ? "" : "s"}?`);
+    const ok = await confirmDialog(I18n.t("confirm.deleteSelectedPages", { n }));
     if (!ok) return;
     State.currentPages = State.currentPages.filter((p) => !reviewSelectedIds.has(p.id));
     reviewSelectedIds.clear();
@@ -2074,7 +2122,16 @@
     if (format === "pdf") {
       const { jsPDF } = window.jspdf;
       let pdf;
-      pages.forEach((canvas, i) => {
+      // Same reasoning as the render loop above (see its comment) applies
+      // here too, and this loop used to skip it: canvas.toDataURL() at
+      // export resolution (up to 4800px) is a real synchronous JPEG encode
+      // per page, and pdf.addImage() does its own synchronous work on top.
+      // For a many-page document that added up to a solid, unyielding
+      // stretch on the main thread with zero progress feedback — the
+      // OCR phase right after it already reports progress per page, so
+      // skipping it here was an inconsistency, not a deliberate choice.
+      for (let i = 0; i < pages.length; i++) {
+        const canvas = pages[i];
         const w = canvas.width, h = canvas.height;
         const orientation = w > h ? "l" : "p";
         if (i === 0) {
@@ -2084,7 +2141,9 @@
         }
         const dataUrl = canvas.toDataURL("image/jpeg", Math.max(0.35, quality));
         pdf.addImage(dataUrl, "JPEG", 0, 0, w, h);
-      });
+        if (onProgress) onProgress(i + 1, pages.length, "pdf");
+        await new Promise((r) => requestAnimationFrame(r));
+      }
 
       if ($("#searchablePdfCheck").checked) {
         for (let i = 0; i < State.currentPages.length; i++) {
@@ -2213,15 +2272,15 @@
   }
 
   $("#saveExportBtn").addEventListener("click", async () => {
-    if (State.currentPages.length === 0) { toast("Añade al menos una página primero", "error"); return; }
+    if (State.currentPages.length === 0) { toast(I18n.t("toast.needPageFirst"), "error"); return; }
     const btn = $("#saveExportBtn");
-    btn.disabled = true; const original = btn.textContent; btn.textContent = "Exportando…";
+    btn.disabled = true; const original = btn.textContent; btn.textContent = I18n.t("export.exportingBtn");
     try {
       const files = await buildExportBlobs((done, total, phase) => {
         if (phase === "ocr") {
-          btn.textContent = `Reconociendo texto ${done}/${total}…`;
+          btn.textContent = I18n.t("export.recognizingCountBtn", { done, total });
         } else {
-          btn.textContent = total > 1 ? `Exportando ${done}/${total}…` : "Exportando…";
+          btn.textContent = total > 1 ? I18n.t("export.exportingCountBtn", { done, total }) : I18n.t("export.exportingBtn");
         }
       });
       files.forEach((f) => downloadBlob(f.blob, f.filename));
@@ -2232,17 +2291,17 @@
       updatePendingBar();
       renderHistory();
       Router.show("view-home");
-      toast("Documento exportado y guardado ✓", "success");
+      toast(I18n.t("toast.exportSaved"), "success");
     } catch (err) {
       console.error(err);
-      toast("No se pudo exportar el documento", "error");
+      toast(I18n.t("toast.exportFailed"), "error");
     } finally {
       btn.disabled = false; btn.textContent = original;
     }
   });
 
   $("#shareBtn").addEventListener("click", async () => {
-    if (State.currentPages.length === 0) { toast("Añade al menos una página primero", "error"); return; }
+    if (State.currentPages.length === 0) { toast(I18n.t("toast.needPageFirst"), "error"); return; }
     try {
       const files = await buildExportBlobs();
       const shareFiles = files.map((f) => new File([f.blob], f.filename, { type: f.mime }));
@@ -2250,10 +2309,10 @@
         await navigator.share({ files: shareFiles, title: $("#fileNameInput").value || "Documento" });
       } else {
         files.forEach((f) => downloadBlob(f.blob, f.filename));
-        toast("Compartir no está disponible; se descargó el archivo");
+        toast(I18n.t("toast.shareFallbackDownload"));
       }
     } catch (err) {
-      if (err.name !== "AbortError") toast("No se pudo compartir el archivo", "error");
+      if (err.name !== "AbortError") toast(I18n.t("toast.shareFailed"), "error");
     }
   });
 
@@ -2294,20 +2353,20 @@
       openReview();
     } catch (err) {
       console.error(err);
-      toast("No se pudo abrir el documento", "error");
+      toast(I18n.t("toast.openDocFailed"), "error");
     }
   }
 
   $("#reviewDeleteBtn").addEventListener("click", async () => {
     if (!State.editingDocId) return;
-    if (!(await confirmDialog("¿Eliminar este documento de tu historial? Esta acción no se puede deshacer."))) return;
+    if (!(await confirmDialog(I18n.t("confirm.deleteDocument")))) return;
     await DocuDB.remove(State.editingDocId);
     State.currentPages = [];
     State.editingDocId = null;
     updatePendingBar();
     renderHistory();
     Router.show("view-home");
-    toast("Documento eliminado");
+    toast(I18n.t("toast.docDeleted"));
   });
 
   $("#reviewRenameBtn").addEventListener("click", async () => {
@@ -2317,7 +2376,7 @@
     $("#fileNameInput").value = name.trim().slice(0, 60) || current;
     $("#reviewTitle").textContent = $("#fileNameInput").value;
     if (State.editingDocId) { await persistCurrentDocument(); renderHistory(); }
-    toast("Documento renombrado", "success");
+    toast(I18n.t("toast.docRenamed"), "success");
   });
 
   /* ---------------------------------------------------------------
@@ -2327,7 +2386,7 @@
     btn.addEventListener("click", () => {
       const target = btn.dataset.nav;
       if (target === "view-review" && State.currentPages.length === 0) {
-        toast("Aún no hay páginas en el documento actual");
+        toast(I18n.t("toast.noPagesYet"));
         return;
       }
       Router.show(target);
